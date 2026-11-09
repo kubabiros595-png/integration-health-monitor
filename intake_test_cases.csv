@@ -1,0 +1,44 @@
+case_id,what_it_tests,shop_id,event_type,mutation,event_ref,expected_status,expected_outcome,expected_stored
+V01,Valid order.created (Mossbank),shop_mossbank,order.created,none,v01,200,accepted,true
+V02,Valid order.created (Quillmoor),shop_quillmoor,order.created,none,v02,200,accepted,true
+V03,Valid order.created (Tallowick),shop_tallowick,order.created,none,v03,200,accepted,true
+V04,Valid customer.updated (Mossbank),shop_mossbank,customer.updated,none,v04,200,accepted,true
+V05,Valid customer.updated (Quillmoor),shop_quillmoor,customer.updated,none,v05,200,accepted,true
+V06,Valid customer.updated (Tallowick),shop_tallowick,customer.updated,none,v06,200,accepted,true
+V07,Order total of 0 is allowed,shop_mossbank,order.created,total_zero,v07,200,accepted,true
+V08,Extra unknown field is allowed,shop_quillmoor,order.created,extra_field,v08,200,accepted,true
+V09,Timestamp 290 s old is still inside 5 min,shop_tallowick,order.created,ts_age_290,v09,200,accepted,true
+V10,Timestamp 60 s in the future (clock skew) is allowed,shop_mossbank,customer.updated,ts_future_60,v10,200,accepted,true
+V11,Non-ASCII text in the body,shop_quillmoor,customer.updated,unicode_name,v11,200,accepted,true
+S01,Signed with a wrong secret,shop_mossbank,order.created,wrong_secret,s01,401,rejected_signature,false
+S02,Body changed after signing,shop_quillmoor,order.created,tamper_body,s02,401,rejected_signature,false
+S03,Signature header missing,shop_tallowick,order.created,no_signature,s03,401,rejected_signature,false
+S04,Signature without v1= prefix,shop_mossbank,order.created,bad_sig_format,s04,401,rejected_signature,false
+S05,Unknown shop id,shop_unknown,order.created,unknown_shop,s05,401,rejected_signature,false
+S06,Signed with another shop's secret,shop_quillmoor,order.created,other_shop_secret,s06,401,rejected_signature,false
+S07,Signed compact JSON but sent pretty-printed,shop_tallowick,order.created,reformatted_body,s07,401,rejected_signature,false
+S08,Timestamp changed after signing,shop_mossbank,order.created,tamper_timestamp,s08,401,rejected_signature,false
+T01,Timestamp 310 s old,shop_mossbank,order.created,ts_age_310,t01,401,rejected_timestamp,false
+T02,Timestamp 10 min old (old request replayed),shop_quillmoor,order.created,ts_age_600,t02,401,rejected_timestamp,false
+T03,Timestamp 400 s in the future,shop_tallowick,order.created,ts_future_400,t03,401,rejected_timestamp,false
+T04,Timestamp header missing,shop_mossbank,order.created,no_timestamp,t04,401,rejected_timestamp,false
+T05,Timestamp is not a number,shop_quillmoor,order.created,ts_not_number,t05,401,rejected_timestamp,false
+F01,Missing event_id,shop_mossbank,order.created,drop_event_id,f01,400,rejected_validation,false
+F02,Missing event_type,shop_quillmoor,order.created,drop_event_type,f02,400,rejected_validation,false
+F03,Missing occurred_at,shop_tallowick,order.created,drop_occurred_at,f03,400,rejected_validation,false
+F04,Missing data object,shop_mossbank,order.created,drop_data,f04,400,rejected_validation,false
+F05,Unknown event_type,shop_quillmoor,order.created,unknown_event_type,f05,400,rejected_validation,false
+F06,Order total sent as text,shop_tallowick,order.created,total_as_string,f06,400,rejected_validation,false
+F07,Negative order total,shop_mossbank,order.created,total_negative,f07,400,rejected_validation,false
+F08,email_opt_in sent as text,shop_quillmoor,customer.updated,optin_as_string,f08,400,rejected_validation,false
+F09,Currency in lowercase,shop_tallowick,order.created,currency_lowercase,f09,400,rejected_validation,false
+F10,shop_id in body differs from header,shop_mossbank,order.created,shop_mismatch,f10,400,rejected_validation,false
+F11,Body is not valid JSON,shop_quillmoor,order.created,invalid_json,f11,400,rejected_validation,false
+F12,event_id in wrong format,shop_tallowick,order.created,bad_event_id,f12,400,rejected_validation,false
+F13,occurred_at is not a date,shop_mossbank,customer.updated,bad_date,f13,400,rejected_validation,false
+F14,Missing customer_id in customer.updated,shop_quillmoor,customer.updated,drop_customer_id,f14,400,rejected_validation,false
+D01,First delivery of an event,shop_mossbank,order.created,none,d01,200,accepted,true
+D02,Same event_id sent again (retry),shop_mossbank,order.created,none,d01,200,duplicate,false
+D03,Exact replay of the same signed request within 5 min,shop_quillmoor,order.created,replay_exact,v02,200,duplicate,false
+D04,Same event_id with a different payload,shop_tallowick,order.created,changed_total,v03,200,duplicate,false
+D05,Same event_id from a different shop is a new event,shop_quillmoor,order.created,none,d01,200,accepted,true

@@ -1,0 +1,644 @@
+{
+  "name": "IHM Webhook Intake",
+  "nodes": [
+    {
+      "id": "e49ec363-e988-417b-84db-0094b1635352",
+      "name": "Receive webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        144
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ihm/events",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "webhookId": "d6e98ab8-28d8-4656-9ffe-515adf8da440"
+    },
+    {
+      "id": "ca43618e-55e4-41dd-8195-af35be85fafc",
+      "name": "Check signature and timestamp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        272
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Step 1: is this request really from the shop, and is it fresh?\n// Signature = HMAC-SHA256(shop secret, \"<timestamp>.<raw body>\"), sent as \"v1=<hex>\".\n// Secrets live only in n8n Variables, never in this code.\nconst crypto = require('crypto');\nconst MAX_AGE_SECONDS = 300; // 5 minutes, both into the past and the future\nconst SECRET_VARIABLE = {\n  shop_mossbank: 'IHM_SECRET_MOSSBANK',\n  shop_quillmoor: 'IHM_SECRET_QUILLMOOR',\n  shop_tallowick: 'IHM_SECRET_TALLOWICK'\n};\n\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst shop = String(headers['x-ihm-shop'] || '');\nconst tsHeader = headers['x-ihm-timestamp'];\nconst sigHeader = String(headers['x-ihm-signature'] || '');\nconst testRun = String(headers['x-ihm-test-run'] || '');\n\nlet raw = null;\nif (item.binary && item.binary.data) {\n  const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\n  raw = buf.toString('utf8');\n}\n\nconst base = {\n  received_at: new Date().toISOString(),\n  shop_id: shop,\n  event_id: '',\n  test_run: testRun,\n  source: testRun ? 'test' : 'live',\n  raw_body: raw\n};\nconst result = (ok, outcome, reason, status) => [{ json: { ...base, ok, outcome, reason, http_status: status } }];\n\nconst variableName = SECRET_VARIABLE[shop];\nif (!variableName) return result(false, 'rejected_signature', 'unknown shop', 401);\nconst secret = $vars[variableName];\nif (!secret) return result(false, 'rejected_config', 'signing secret not configured', 500);\nif (raw === null) return result(false, 'rejected_validation', 'raw body not available', 400);\n\nconst match = /^v1=([0-9a-f]{64})$/.exec(sigHeader);\nif (!match) return result(false, 'rejected_signature', sigHeader ? 'malformed signature header' : 'missing signature header', 401);\n\nif (tsHeader === undefined || tsHeader === '') return result(false, 'rejected_timestamp', 'missing timestamp header', 401);\nif (!/^[0-9]{9,11}$/.test(String(tsHeader))) return result(false, 'rejected_timestamp', 'timestamp is not unix seconds', 401);\nconst ts = Number(tsHeader);\n\nconst expected = crypto.createHmac('sha256', secret).update(tsHeader + '.' + raw, 'utf8').digest('hex');\nconst same = crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(match[1], 'hex'));\nif (!same) return result(false, 'rejected_signature', 'signature does not match', 401);\n\nconst age = Math.floor(Date.now() / 1000) - ts;\nif (age > MAX_AGE_SECONDS) return result(false, 'rejected_timestamp', 'timestamp too old (' + age + ' s)', 401);\nif (age < -MAX_AGE_SECONDS) return result(false, 'rejected_timestamp', 'timestamp in the future (' + (-age) + ' s)', 401);\n\nreturn result(true, 'signature_ok', '', 200);"
+      }
+    },
+    {
+      "id": "0e75bd10-57cf-4961-ab42-e7471521ae6d",
+      "name": "Signature and time OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        496,
+        272
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ae3ba5e3-8e3c-4b53-8e5d-49e88f6ec51d",
+      "name": "Validate fields and types",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        192
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Step 2: required fields and types. Every problem is listed, not just the first one.\nconst input = $input.first().json;\nconst errors = [];\nlet body = null;\ntry { body = JSON.parse(input.raw_body); } catch (e) { errors.push('body is not valid JSON'); }\n\nconst isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);\nconst isText = v => typeof v === 'string' && v.trim() !== '';\nconst EVENT_TYPES = ['order.created', 'customer.updated'];\n\nif (body !== null && !isObj(body)) errors.push('body must be a JSON object');\nif (isObj(body)) {\n  if (!('event_id' in body)) errors.push('missing event_id');\n  else if (typeof body.event_id !== 'string' || !/^evt_[A-Za-z0-9]{8,40}$/.test(body.event_id)) errors.push('event_id must look like evt_ + 8-40 letters/digits');\n\n  if (!('event_type' in body)) errors.push('missing event_type');\n  else if (!EVENT_TYPES.includes(body.event_type)) errors.push('unknown event_type');\n\n  if (!('occurred_at' in body)) errors.push('missing occurred_at');\n  else if (typeof body.occurred_at !== 'string' || isNaN(Date.parse(body.occurred_at)) || !/^\\d{4}-\\d{2}-\\d{2}T/.test(body.occurred_at)) errors.push('occurred_at must be an ISO 8601 date-time');\n\n  if (!('shop_id' in body)) errors.push('missing shop_id');\n  else if (body.shop_id !== input.shop_id) errors.push('shop_id in body does not match the signing shop');\n\n  if (!('data' in body)) errors.push('missing data');\n  else if (!isObj(body.data)) errors.push('data must be an object');\n  else if (body.event_type === 'order.created') {\n    const d = body.data;\n    if (!isText(d.order_id)) errors.push('data.order_id must be text');\n    if (typeof d.total !== 'number' || !isFinite(d.total)) errors.push('data.total must be a number');\n    else if (d.total < 0) errors.push('data.total must be 0 or more');\n    if (typeof d.currency !== 'string' || !/^[A-Z]{3}$/.test(d.currency)) errors.push('data.currency must be 3 capital letters');\n  } else if (body.event_type === 'customer.updated') {\n    const d = body.data;\n    if (!isText(d.customer_id)) errors.push('data.customer_id must be text');\n    if (typeof d.email_opt_in !== 'boolean') errors.push('data.email_opt_in must be true or false');\n  }\n}\n\nconst ok = errors.length === 0;\nreturn [{ json: {\n  ...input,\n  ok,\n  event_id: isObj(body) && typeof body.event_id === 'string' ? body.event_id.slice(0, 60) : '',\n  event_type: ok ? body.event_type : '',\n  occurred_at: ok ? body.occurred_at : '',\n  outcome: ok ? 'valid' : 'rejected_validation',\n  reason: errors.join('; '),\n  http_status: ok ? 200 : 400\n} }];"
+      }
+    },
+    {
+      "id": "23e4eb94-2b84-4dca-8ac7-7ad22c21bbdb",
+      "name": "Payload valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "d9cfaed0-75ed-4c6c-b1b9-08022636f722",
+      "name": "Look up event_id",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1328,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "JhY5TUrGrTqxMh4I",
+          "cachedResultName": "IHM Events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "shop_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.shop_id }}"
+            },
+            {
+              "keyName": "event_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.event_id }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "a15ee288-ec1d-44a8-bfa7-6ac4f3049067",
+      "name": "New or duplicate?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Step 3: idempotency. The same shop + event_id is processed only once.\nconst v = $('Validate fields and types').first().json;\nconst seen = $input.all().some(i => i.json && i.json.id !== undefined);\nreturn [{ json: {\n  ...v,\n  outcome: seen ? 'duplicate' : 'new',\n  reason: seen ? 'event_id already processed, ignored' : '',\n  http_status: 200\n} }];"
+      }
+    },
+    {
+      "id": "02249184-2a70-4304-86f7-e9cd298b0950",
+      "name": "Already seen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1776,
+        128
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.outcome }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "duplicate"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "1b79aa2e-8ce8-4e99-8a23-908c446c3dda",
+      "name": "Respond to sender",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2384,
+        272
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.http_status === 200 ? { status: $json.outcome, event_id: $json.event_id } : ($json.http_status === 401 ? { error: \"unauthorized\" } : ($json.http_status === 400 ? { error: \"invalid payload\", details: $json.reason } : { error: \"server error\" })) }}",
+        "options": {
+          "responseCode": "={{ $json.http_status }}"
+        }
+      }
+    },
+    {
+      "id": "b8d065c1-4314-4141-b350-ad63fa48e720",
+      "name": "Save event",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1856,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "JhY5TUrGrTqxMh4I",
+          "cachedResultName": "IHM Events"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $json.event_id }}",
+            "shop_id": "={{ $json.shop_id }}",
+            "event_type": "={{ $json.event_type }}",
+            "occurred_at": "={{ $json.occurred_at }}",
+            "received_at": "={{ $json.received_at }}",
+            "payload": "={{ $json.raw_body }}",
+            "test_run": "={{ $json.test_run }}",
+            "source": "={{ $json.source }}"
+          },
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shop_id",
+              "displayName": "shop_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_type",
+              "displayName": "event_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "test_run",
+              "displayName": "test_run",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7abacf49-b1cc-459d-a1e0-a1aef5980c16",
+      "name": "Mark accepted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        192
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Step 4: the event is stored, so it is now safe to answer 200.\nconst v = $('New or duplicate?').first().json;\nreturn [{ json: { ...v, outcome: 'accepted', reason: '', http_status: 200 } }];"
+      }
+    },
+    {
+      "id": "fd835c98-6172-4555-b42f-76dea945aef5",
+      "name": "Write request log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2608,
+        272
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "kLknagWQz4l8RCHZ",
+          "cachedResultName": "IHM Request Log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "received_at": "={{ $json.received_at }}",
+            "shop_id": "={{ $json.shop_id }}",
+            "event_id": "={{ $json.event_id }}",
+            "outcome": "={{ $json.outcome }}",
+            "http_status": "={{ $json.http_status }}",
+            "reason": "={{ $json.reason }}",
+            "test_run": "={{ $json.test_run }}",
+            "source": "={{ $json.source }}"
+          },
+          "schema": [
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shop_id",
+              "displayName": "shop_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "http_status",
+              "displayName": "http_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "test_run",
+              "displayName": "test_run",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive webhook": {
+      "main": [
+        [
+          {
+            "node": "Check signature and timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check signature and timestamp": {
+      "main": [
+        [
+          {
+            "node": "Signature and time OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature and time OK?": {
+      "main": [
+        [
+          {
+            "node": "Validate fields and types",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate fields and types": {
+      "main": [
+        [
+          {
+            "node": "Payload valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload valid?": {
+      "main": [
+        [
+          {
+            "node": "Look up event_id",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look up event_id": {
+      "main": [
+        [
+          {
+            "node": "New or duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New or duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Already seen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already seen?": {
+      "main": [
+        [
+          {
+            "node": "Respond to sender",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to sender": {
+      "main": [
+        [
+          {
+            "node": "Write request log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save event": {
+      "main": [
+        [
+          {
+            "node": "Mark accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark accepted": {
+      "main": [
+        [
+          {
+            "node": "Respond to sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "nodeGroups": [
+    {
+      "id": "ea7dc66f-c8f0-4e90-9c13-74a5d941bb01",
+      "name": "Authenticate",
+      "nodeNames": [
+        "Check signature and timestamp",
+        "Signature and time OK?"
+      ],
+      "description": "HMAC-SHA256 over the raw body + 5-minute timestamp window. Failures get 401 and a log entry."
+    },
+    {
+      "id": "09aadbf7-dc59-4885-98ce-2fed1b65099b",
+      "name": "Validate",
+      "nodeNames": [
+        "Validate fields and types",
+        "Payload valid?"
+      ],
+      "description": "Required fields and types. Failures get 400 and a log entry with every reason."
+    },
+    {
+      "id": "d08b5bb9-4db8-4194-b4e1-60a5c2eb8e22",
+      "name": "Deduplicate",
+      "nodeNames": [
+        "Look up event_id",
+        "New or duplicate?",
+        "Already seen?"
+      ],
+      "description": "Same shop + event_id is processed once. Repeats get 200 and are only logged."
+    },
+    {
+      "id": "cf9e346e-ba11-47a7-ab4c-148a394de58a",
+      "name": "Store",
+      "nodeNames": [
+        "Save event",
+        "Mark accepted"
+      ],
+      "description": "Saves the event before answering, so 200 always means stored."
+    },
+    {
+      "id": "7cd756fb-9f6b-4be1-9741-ff0151efdf32",
+      "name": "Reply and log",
+      "nodeNames": [
+        "Respond to sender",
+        "Write request log"
+      ],
+      "description": "Answers the sender first, then writes the request log."
+    }
+  ],
+  "tags": []
+}

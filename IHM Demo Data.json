@@ -1,0 +1,315 @@
+{
+  "name": "IHM Demo Data",
+  "nodes": [
+    {
+      "id": "73a3bdb5-ec6c-42c9-92c7-2614ebf17156",
+      "name": "Load demo history",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "e817c21b-6f33-448e-91c0-9e5dc6ae4d7f",
+      "name": "Generate demo events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Fictional 7-day history written straight to the tables (not through the webhook).\n// Mossbank: healthy, an event every 20 min.\n// Quillmoor: an event every 15 min, then nothing for the last 5 hours (silent integration).\n// Tallowick: an event every 20 min until 52 min ago, when its signing secret \"changed\": since then every request is rejected.\nconst NOW = Date.now();\nconst MIN = 60000;\nconst PLAN = [\n  { shop: 'shop_mossbank', gap: 20, lastAgo: 3 },\n  { shop: 'shop_quillmoor', gap: 15, lastAgo: 300 },\n  { shop: 'shop_tallowick', gap: 20, lastAgo: 52 }\n];\nconst out = [];\nlet n = 0;\nfor (const p of PLAN) {\n  for (let t = NOW - p.lastAgo * MIN; t > NOW - 7 * 1440 * MIN; t -= p.gap * MIN) {\n    n++;\n    const id = 'evt_DEMO' + p.shop.slice(5, 8).toUpperCase() + String(n).padStart(6, '0');\n    const type = n % 4 === 0 ? 'customer.updated' : 'order.created';\n    const at = new Date(t).toISOString();\n    out.push({ json: { event_id: id, shop_id: p.shop, event_type: type, occurred_at: at, received_at: at,\n      payload: JSON.stringify({ event_id: id, event_type: type, occurred_at: at, shop_id: p.shop, data: { note: 'fictional demo event' } }),\n      test_run: '', source: 'demo' } });\n  }\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "c7521c60-e77e-4199-99dc-d143dbf21f14",
+      "name": "Insert demo events",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        496,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "JhY5TUrGrTqxMh4I",
+          "cachedResultName": "IHM Events"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shop_id",
+              "displayName": "shop_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_type",
+              "displayName": "event_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "test_run",
+              "displayName": "test_run",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "fefb687a-2a7e-4356-8fb2-48a2b75031dd",
+      "name": "Generate demo request log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Request log for the last 24 hours: one \"accepted\" row per demo event,\n// plus Tallowick's rejected requests every 5 min since its secret \"changed\" 50 min ago, and a few normal retries.\nconst NOW = Date.now();\nconst MIN = 60000;\nconst events = $('Generate demo events').all().map(i => i.json).filter(e => new Date(e.received_at).getTime() > NOW - 1440 * MIN);\nconst out = events.map(e => ({ json: { received_at: e.received_at, shop_id: e.shop_id, event_id: e.event_id, outcome: 'accepted', http_status: 200, reason: '', test_run: '', source: 'demo' } }));\nfor (let m = 50; m >= 5; m -= 5) out.push({ json: { received_at: new Date(NOW - m * MIN).toISOString(), shop_id: 'shop_tallowick', event_id: '', outcome: 'rejected_signature', http_status: 401, reason: 'signature does not match', test_run: '', source: 'demo' } });\nfor (const e of events.filter(x => x.shop_id === 'shop_mossbank').slice(0, 3)) out.push({ json: { received_at: e.received_at, shop_id: e.shop_id, event_id: e.event_id, outcome: 'duplicate', http_status: 200, reason: 'event_id already processed, ignored', test_run: '', source: 'demo' } });\nreturn out;"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "51d229c7-cc22-43e4-96e5-52416045a62f",
+      "name": "Insert demo request log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        944,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "kLknagWQz4l8RCHZ",
+          "cachedResultName": "IHM Request Log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shop_id",
+              "displayName": "shop_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "http_status",
+              "displayName": "http_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "test_run",
+              "displayName": "test_run",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Load demo history": {
+      "main": [
+        [
+          {
+            "node": "Generate demo events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate demo events": {
+      "main": [
+        [
+          {
+            "node": "Insert demo events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert demo events": {
+      "main": [
+        [
+          {
+            "node": "Generate demo request log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate demo request log": {
+      "main": [
+        [
+          {
+            "node": "Insert demo request log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "nodeGroups": [
+    {
+      "id": "1e25aef3-ecf9-4995-89f5-c5d4b5c7baa0",
+      "name": "Demo history",
+      "nodeNames": [
+        "Generate demo events",
+        "Insert demo events",
+        "Generate demo request log",
+        "Insert demo request log"
+      ],
+      "description": "Fictional 7-day history: one healthy shop, one silent for 5 h, one with all requests rejected for 50 min."
+    }
+  ],
+  "tags": []
+}

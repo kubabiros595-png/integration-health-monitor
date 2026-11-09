@@ -1,0 +1,401 @@
+{
+  "name": "IHM Daily Health Report",
+  "nodes": [
+    {
+      "id": "a241cd04-5f60-4217-b13c-25b912b769de",
+      "name": "Every day 7:47",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 7,
+              "triggerAtMinute": 47
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "412a7f17-0061-4a37-8d5a-4e6296f9b1aa",
+      "name": "Get integrations",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        272,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "EmpfjnxKJ2wHR0Bb",
+          "cachedResultName": "IHM Integrations"
+        },
+        "returnAll": true
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "892b3e40-3d0b-4d69-b361-06f9659ebd23",
+      "name": "Get events of last 7 days",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        496,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "JhY5TUrGrTqxMh4I",
+          "cachedResultName": "IHM Events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "received_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus({ days: 7 }).toISO() }}"
+            },
+            {
+              "keyName": "test_run",
+              "condition": "isEmpty"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "08e0c413-7c6b-4526-ae8b-bfa76422feed",
+      "name": "Get requests of last 24 h",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "kLknagWQz4l8RCHZ",
+          "cachedResultName": "IHM Request Log"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "received_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus({ hours: 24 }).toISO() }}"
+            },
+            {
+              "keyName": "test_run",
+              "condition": "isEmpty"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "175937ad-c21e-437e-af5d-71d801d77462",
+      "name": "Get open alerts",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        944,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "F9zhjEQscq9bbyEB",
+          "cachedResultName": "IHM Alerts"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "pending review"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "cb982dcf-6b09-4955-b613-e03887e828c6",
+      "name": "Build one report per client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Plain numbers per client for the last 24 hours, plus a status a CSM can read in two seconds.\nconst rows = name => $(name).all().map(i => i.json).filter(r => r && r.id !== undefined);\nconst integrations = rows('Get integrations').filter(r => r.active !== false);\nconst events = rows('Get events of last 7 days');\nconst log = rows('Get requests of last 24 h');\nconst alerts = rows('Get open alerts');\nconst now = Date.now();\nconst fmt = d => new Date(d).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';\nconst today = $now.setZone('Europe/Warsaw').toFormat('yyyy-MM-dd');\n\nreturn integrations.map(i => {\n  const mine = log.filter(r => r.shop_id === i.shop_id);\n  const accepted = mine.filter(r => r.outcome === 'accepted').length;\n  const duplicates = mine.filter(r => r.outcome === 'duplicate').length;\n  const rejectedRows = mine.filter(r => String(r.outcome).startsWith('rejected'));\n  const rejected = rejectedRows.length;\n  const rate = accepted + rejected ? Math.round(rejected / (accepted + rejected) * 1000) / 10 : 0;\n  const counts = {};\n  for (const r of rejectedRows) { const k = r.outcome.replace('rejected_', ''); counts[k] = (counts[k] || 0) + 1; }\n  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];\n  const times = events.filter(e => e.shop_id === i.shop_id).map(e => new Date(e.received_at).getTime());\n  const last = times.length ? Math.max(...times) : null;\n  const open = alerts.filter(a => a.shop_id === i.shop_id).length;\n  const hoursSince = last ? Math.floor((now - last) / 3600000) : null;\n\n  let status = 'Healthy';\n  if (rate > 5 || accepted === 0) status = 'Needs attention';\n  if (open > 0) status = 'Problem';\n\n  const parts = [];\n  parts.push(accepted + ' events accepted in 24 h');\n  if (rejected) parts.push(rejected + ' rejected (' + rate + '%), mostly ' + top[0]);\n  if (duplicates) parts.push(duplicates + ' duplicates ignored');\n  parts.push(last ? 'last event ' + (hoursSince < 1 ? 'less than 1 h ago' : hoursSince + ' h ago') : 'no events in 7 days');\n  if (open) parts.push(open + ' alert(s) waiting for review');\n\n  return { json: {\n    report_date: today, shop_id: i.shop_id, shop_name: i.shop_name,\n    accepted_24h: accepted, duplicates_24h: duplicates, rejected_24h: rejected, error_rate_pct: rate,\n    last_event_at: last ? fmt(last) : 'none in 7 days', top_reject_reason: top ? top[0] + ' (' + top[1] + ')' : '',\n    open_alerts: open, status, summary: i.shop_name + ': ' + status + '. ' + parts.join(', ') + '.'\n  } };\n});"
+      }
+    },
+    {
+      "id": "90490597-968a-4476-bee5-d40747ef08b8",
+      "name": "Save daily report",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1024,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GqNTXZl9OlNI3tYu",
+          "cachedResultName": "IHM Daily Reports"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "report_date",
+              "displayName": "report_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shop_id",
+              "displayName": "shop_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shop_name",
+              "displayName": "shop_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "accepted_24h",
+              "displayName": "accepted_24h",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duplicates_24h",
+              "displayName": "duplicates_24h",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "rejected_24h",
+              "displayName": "rejected_24h",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_rate_pct",
+              "displayName": "error_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_event_at",
+              "displayName": "last_event_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "top_reject_reason",
+              "displayName": "top_reject_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "open_alerts",
+              "displayName": "open_alerts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every day 7:47": {
+      "main": [
+        [
+          {
+            "node": "Get integrations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get integrations": {
+      "main": [
+        [
+          {
+            "node": "Get events of last 7 days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get events of last 7 days": {
+      "main": [
+        [
+          {
+            "node": "Get requests of last 24 h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get requests of last 24 h": {
+      "main": [
+        [
+          {
+            "node": "Get open alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get open alerts": {
+      "main": [
+        [
+          {
+            "node": "Build one report per client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build one report per client": {
+      "main": [
+        [
+          {
+            "node": "Save daily report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "nodeGroups": [
+    {
+      "id": "3a061ec2-f94b-4b47-9b9d-907eb65be616",
+      "name": "Load data",
+      "nodeNames": [
+        "Get integrations",
+        "Get events of last 7 days",
+        "Get requests of last 24 h",
+        "Get open alerts"
+      ],
+      "description": "Integrations, events of 7 days, requests of 24 h and open alerts. Test rows are left out."
+    },
+    {
+      "id": "a8d3b323-3314-437a-800a-71ab9b4c85ff",
+      "name": "Report",
+      "nodeNames": [
+        "Build one report per client",
+        "Save daily report"
+      ],
+      "description": "One row per client: accepted, rejected, duplicates, last event, open alerts and a one-line status."
+    }
+  ],
+  "tags": []
+}

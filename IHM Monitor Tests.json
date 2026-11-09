@@ -1,0 +1,346 @@
+{
+  "name": "IHM Monitor Tests",
+  "nodes": [
+    {
+      "id": "f8a7a882-e125-4f38-a438-77ff71ae55ab",
+      "name": "Run monitor tests",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "7b6bf3cf-d598-4df1-981f-b39b5ee3cca0",
+      "name": "Build detection scenarios",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Each scenario is a made-up history for one or more integrations, with the alerts we expect.\nconst NOW = Date.now();\nconst MIN = 60000;\nconst iso = t => new Date(t).toISOString();\nconst A = { shop_id: 'shop_mossbank', shop_name: 'Mossbank Ceramics' };\nconst B = { shop_id: 'shop_quillmoor', shop_name: 'Quillmoor Books' };\nconst C = { shop_id: 'shop_tallowick', shop_name: 'Tallowick Candles' };\n\n// events every gapMin minutes for 7 days, the last one lastAgoMin minutes ago\nconst rhythm = (shop, gapMin, lastAgoMin) => {\n  const out = [];\n  for (let t = NOW - lastAgoMin * MIN; t > NOW - 7 * 1440 * MIN; t -= gapMin * MIN) out.push({ shop_id: shop.shop_id, received_at: iso(t) });\n  return out;\n};\n// request log rows spread over the last 55 minutes\nconst requests = (shop, counts) => {\n  const rows = [];\n  for (const [outcome, n, reason] of counts) for (let i = 0; i < n; i++) rows.push({ shop_id: shop.shop_id, outcome, reason: reason || '', received_at: iso(NOW - (2 + Math.floor(53 * i / Math.max(1, n))) * MIN) });\n  return rows;\n};\nconst SIG = ['rejected_signature', 0, 'signature does not match'];\nconst rej = (n, what) => [what ? what[0] : SIG[0], n, what ? what[2] : SIG[2]];\n\nconst S = [\n  { case_id: 'M01', what: 'Three integrations: one normal, one silent, one error spike', integ: [A, B, C],\n    events: [...rhythm(A, 5, 2), ...rhythm(B, 5, 240), ...rhythm(C, 5, 2)],\n    requests: [...requests(A, [['accepted', 12]]), ...requests(C, [['accepted', 20], rej(6)])],\n    expect: ['shop_quillmoor:silence', 'shop_tallowick:error_spike'] },\n  { case_id: 'M02', what: 'Busy integration, last event 2 min ago', integ: [A], events: rhythm(A, 5, 2), requests: requests(A, [['accepted', 12]]), expect: [] },\n  { case_id: 'M03', what: 'Busy integration silent for 4 hours', integ: [A], events: rhythm(A, 5, 240), expect: ['shop_mossbank:silence'] },\n  { case_id: 'M04', what: 'Low-traffic shop (every 2 h), quiet 3 h = normal for it', integ: [A], events: rhythm(A, 120, 180), expect: [] },\n  { case_id: 'M05', what: 'Low-traffic shop (every 2 h), quiet 7 h', integ: [A], events: rhythm(A, 120, 420), expect: ['shop_mossbank:silence'] },\n  { case_id: 'M06', what: '5-min rhythm, quiet 59 min (limit 60)', integ: [A], events: rhythm(A, 5, 59), expect: [] },\n  { case_id: 'M07', what: '5-min rhythm, quiet 61 min (limit 60)', integ: [A], events: rhythm(A, 5, 61), expect: ['shop_mossbank:silence'] },\n  { case_id: 'M08', what: 'Error rate exactly 10% (2 of 20) is not above the limit', integ: [A], events: rhythm(A, 5, 2), requests: requests(A, [['accepted', 18], rej(2)]), expect: [] },\n  { case_id: 'M09', what: 'Error rate 15% (3 of 20)', integ: [A], events: rhythm(A, 5, 2), requests: requests(A, [['accepted', 17], rej(3)]), expect: ['shop_mossbank:error_spike'] },\n  { case_id: 'M10', what: '2 of 3 rejected: too few requests to judge', integ: [A], events: rhythm(A, 5, 2), requests: requests(A, [['accepted', 1], rej(2)]), expect: [] },\n  { case_id: 'M11', what: '10 duplicates and 10 accepted: duplicates are not errors', integ: [A], events: rhythm(A, 5, 2), requests: requests(A, [['accepted', 10], ['duplicate', 10]]), expect: [] },\n  { case_id: 'M12', what: 'New integration with only 4 events: still learning, no alert', integ: [A], events: rhythm(A, 1440, 4320), expect: [] },\n  { case_id: 'M13', what: 'Integration that never sent anything in 7 days', integ: [A], events: [], expect: ['shop_mossbank:silence'] },\n  { case_id: 'M14', what: 'Silent, but the same alert is pending review since 2 h', integ: [A], events: rhythm(A, 5, 240),\n    alerts: [{ shop_id: 'shop_mossbank', alert_type: 'silence', status: 'pending review', created_at: iso(NOW - 120 * MIN) }], expect: [], expectSkipped: ['shop_mossbank:silence'] },\n  { case_id: 'M15', what: 'Silent, earlier alert is 7 h old', integ: [A], events: rhythm(A, 5, 240),\n    alerts: [{ shop_id: 'shop_mossbank', alert_type: 'silence', status: 'pending review', created_at: iso(NOW - 420 * MIN) }], expect: ['shop_mossbank:silence'] },\n  { case_id: 'M16', what: 'Silent, earlier alert was rejected by the CSM', integ: [A], events: rhythm(A, 5, 240),\n    alerts: [{ shop_id: 'shop_mossbank', alert_type: 'silence', status: 'rejected', created_at: iso(NOW - 60 * MIN) }], expect: ['shop_mossbank:silence'] },\n  { case_id: 'M17', what: 'Validation errors 50% (10 of 20)', integ: [A], events: rhythm(A, 5, 2),\n    requests: requests(A, [['accepted', 10], ['rejected_validation', 10, 'data.total must be a number']]), expect: ['shop_mossbank:error_spike'] },\n  { case_id: 'M18', what: 'Silent and error spike at the same time', integ: [A], events: rhythm(A, 5, 240),\n    requests: requests(A, [['rejected_signature', 12, 'signature does not match']]), expect: ['shop_mossbank:error_spike', 'shop_mossbank:silence'] }\n];\n\nreturn S.map(s => ({ json: {\n  mode: 'test_detect', case_id: s.case_id, what_it_tests: s.what, now: iso(NOW),\n  integrations: s.integ, events: s.events, requests: s.requests || [], alerts: s.alerts || [],\n  expected_alerts: [...s.expect].sort(), expected_skipped: [...(s.expectSkipped || [])].sort()\n} }));"
+      }
+    },
+    {
+      "id": "5f1c074d-666d-4505-8962-aa63d5f75a24",
+      "name": "Run detector",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        496,
+        128
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jhqiSiTt28saOls8",
+          "cachedResultName": "IHM Health Monitor"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "47b0e3f4-c0d3-4626-bcdf-8e745355bbc0",
+      "name": "Build draft check cases",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Hand-written drafts, good and bad, run through the same Check draft code as the live alerts.\nconst silence = { minutes_silent: 245, hours_silent: 4, events_last_7_days: 1950, last_event_at: '2026-11-09 14:05 UTC', usual_gap_minutes: 5, threshold_minutes: 60 };\nconst spike = { window_minutes: 60, requests: 26, rejected: 6, error_rate_pct: 23.1, threshold_pct: 10, top_reason: 'rejected_signature: signature does not match', top_reason_count: 6 };\nconst goodSilence = 'Hi Mossbank Ceramics team,\\n\\nWe have not received any events from your store since 2026-11-09 14:05 UTC, which is about 4 hours. Your store usually sends events every few minutes, so this looks unusual.\\n\\nCould you check:\\n- Is the webhook still enabled in your store admin?\\n- Did the endpoint URL change after a recent update?\\n- Does your webhook log show failed deliveries?\\n\\nPlease reply with what you find and we will confirm on our side once events arrive again.\\n\\nBest regards,\\nCustomer Success';\nconst goodSpike = 'Hi Mossbank Ceramics team,\\n\\nIn the last hour, 23.1% of the webhook requests from your store were rejected because the signature did not match.\\n\\nCould you check:\\n- Was the webhook signing secret changed or regenerated on your side?\\n- Is a proxy or plugin changing the request before it is sent?\\n\\nPlease reply with what you find and we will confirm on our side once requests are accepted again.\\n\\nBest regards,\\nCustomer Success';\nconst base = (id, what, type, facts, body, expected, extra) => ({ json: Object.assign({\n  mode: 'test_check', case_id: id, what_it_tests: what, shop_id: 'shop_mossbank', shop_name: 'Mossbank Ceramics',\n  alert_type: type, facts, draft_subject: type === 'silence' ? 'No events from your store since 14:05 UTC' : 'Some webhook requests are being rejected',\n  draft_body: body, parse_error: '', expected_pass: expected }, extra || {}) });\nconst realSecret = $vars.IHM_SECRET_MOSSBANK || 'variable-missing';\nreturn [\n  base('C01', 'Good silence draft passes', 'silence', silence, goodSilence, true),\n  base('C02', 'Good error-spike draft passes', 'error_spike', spike, goodSpike, true),\n  base('C03', 'Wrong rate (25% instead of 23.1%)', 'error_spike', spike, goodSpike.replace('23.1%', '25%'), false),\n  base('C04', 'Invented number (300 orders)', 'silence', silence, goodSilence.replace('this looks unusual', 'about 300 orders may be missing'), false),\n  base('C05', 'Contains the real signing secret', 'error_spike', spike, goodSpike.replace('Could you check:', 'Your secret is ' + realSecret + '. Could you check:'), false),\n  base('C06', 'Contains a key-like hex string', 'error_spike', spike, goodSpike.replace('Could you check:', 'Expected value: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08. Could you check:'), false),\n  base('C07', 'Mentions another client', 'silence', silence, goodSilence.replace('this looks unusual', 'this looks unusual, unlike Quillmoor Books'), false),\n  base('C08', 'No number from the facts at all', 'silence', silence, goodSilence.replace('since 2026-11-09 14:05 UTC, which is about 4 hours', 'for a while'), false, { draft_subject: 'No events from your store' }),\n  base('C09', 'AI call failed: no draft', 'silence', silence, '', false, { parse_error: 'AI call failed after retries', draft_subject: '' }),\n  base('C10', 'Contains a request signature (v1=...)', 'error_spike', spike, goodSpike.replace('Could you check:', 'Last header: v1=4be1f0aa91c2. Could you check:'), false)\n];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cf1e7b3c-626b-4fc4-aca5-6e73003ffa76",
+      "name": "Run draft checks",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        1024,
+        128
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jhqiSiTt28saOls8",
+          "cachedResultName": "IHM Health Monitor"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "2226ce12-f034-4a20-bce2-cee613326ab2",
+      "name": "Compare expected vs actual",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const runId = 'M' + Date.now().toString(36).toUpperCase();\nconst runAt = new Date().toISOString();\nconst want = {};\nfor (const s of $('Build detection scenarios').all()) want[s.json.case_id] = s.json;\nconst out = [];\nfor (const r of $('Run detector').all().map(i => i.json)) {\n  const w = want[r.case_id];\n  const got = r.problems.filter(p => !p.skipped).map(p => p.shop_id + ':' + p.alert_type).sort();\n  const skipped = r.problems.filter(p => p.skipped).map(p => p.shop_id + ':' + p.alert_type).sort();\n  const falseAlarms = got.filter(g => !w.expected_alerts.includes(g));\n  const missed = w.expected_alerts.filter(e => !got.includes(e));\n  const passed = !falseAlarms.length && !missed.length && JSON.stringify(skipped) === JSON.stringify(w.expected_skipped);\n  out.push({ json: { run_id: runId, run_at: runAt, suite: 'detector', case_id: r.case_id, what_it_tests: w.what_it_tests,\n    expected: (w.expected_alerts.join(', ') || 'no alert') + (w.expected_skipped.length ? ' | skipped ' + w.expected_skipped.join(', ') : ''),\n    actual: (got.join(', ') || 'no alert') + (skipped.length ? ' | skipped ' + skipped.join(', ') : ''),\n    passed, detail: r.results.map(x => x.shop_id + ' ' + x.status + ' (' + x.note + ')').join('; '),\n    false_alarms: falseAlarms.length, missed: missed.length } });\n}\n// Draft checks. For cases that contain a secret or key, the draft must also be removed\n// and the notes must not quote any piece of the secret.\nconst secret = $vars.IHM_SECRET_MOSSBANK || '';\nconst chunks = [];\nfor (let i = 0; i + 4 <= secret.length; i++) chunks.push(secret.slice(i, i + 4));\nconst LEAK_CASES = ['C05', 'C06', 'C10'];\nconst cases = {};\nfor (const c of $('Build draft check cases').all()) cases[c.json.case_id] = c.json;\nfor (const r of $('Run draft checks').all().map(i => i.json)) {\n  const c = cases[r.case_id];\n  let passed = r.check_passed === c.expected_pass;\n  let note = '';\n  if (LEAK_CASES.includes(r.case_id)) {\n    const removed = String(r.draft_body || '').startsWith('[removed');\n    const quoted = chunks.some(ch => String(r.check_notes || '').includes(ch)) || /numbers not in the facts: /.test(r.check_notes || '');\n    if (!removed) { passed = false; note += ' draft not removed;'; }\n    if (quoted) { passed = false; note += ' notes quote part of the secret;'; }\n  }\n  out.push({ json: { run_id: runId, run_at: runAt, suite: 'draft_check', case_id: r.case_id, what_it_tests: c.what_it_tests,\n    expected: c.expected_pass ? 'pass' : (LEAK_CASES.includes(r.case_id) ? 'blocked, draft removed, nothing quoted' : 'blocked'),\n    actual: (r.check_passed ? 'pass' : 'blocked') + (LEAK_CASES.includes(r.case_id) ? (note ? ',' + note : ', draft removed, nothing quoted') : ''),\n    passed, detail: (r.check_notes || '').replace(/[A-Za-z0-9]{20,}/g, '[hidden]'),\n    false_alarms: (!c.expected_pass && r.check_passed) ? 1 : 0, missed: 0 } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "29d0d753-2208-49cc-bbb1-ba74a0ce7024",
+      "name": "Save test results",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1552,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "lVjiLJqN9OgQ6lmq",
+          "cachedResultName": "IHM Test Results"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "run_id",
+              "displayName": "run_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "run_at",
+              "displayName": "run_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "suite",
+              "displayName": "suite",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "case_id",
+              "displayName": "case_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "what_it_tests",
+              "displayName": "what_it_tests",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "expected",
+              "displayName": "expected",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actual",
+              "displayName": "actual",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "passed",
+              "displayName": "passed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "detail",
+              "displayName": "detail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d7a40f61-dbc9-4a95-a01d-9bb123674957",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rows = $('Compare expected vs actual').all().map(i => i.json);\nconst by = s => rows.filter(r => r.suite === s);\nconst sum = (arr, k) => arr.reduce((a, r) => a + (r[k] || 0), 0);\nreturn [{ json: {\n  run_id: rows[0] && rows[0].run_id,\n  detector: by('detector').filter(r => r.passed).length + ' of ' + by('detector').length,\n  draft_check: by('draft_check').filter(r => r.passed).length + ' of ' + by('draft_check').length,\n  false_alarms: sum(by('detector'), 'false_alarms'), missed: sum(by('detector'), 'missed'),\n  bad_drafts_let_through: sum(by('draft_check'), 'false_alarms'),\n  failures: rows.filter(r => !r.passed).map(r => r.case_id + ': expected ' + r.expected + ', got ' + r.actual + ' (' + r.detail + ')')\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "Run monitor tests": {
+      "main": [
+        [
+          {
+            "node": "Build detection scenarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build detection scenarios": {
+      "main": [
+        [
+          {
+            "node": "Run detector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run detector": {
+      "main": [
+        [
+          {
+            "node": "Build draft check cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build draft check cases": {
+      "main": [
+        [
+          {
+            "node": "Run draft checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run draft checks": {
+      "main": [
+        [
+          {
+            "node": "Compare expected vs actual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare expected vs actual": {
+      "main": [
+        [
+          {
+            "node": "Save test results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save test results": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "nodeGroups": [
+    {
+      "id": "afdf25cd-2530-4f12-9118-365d08d7822d",
+      "name": "Detector",
+      "nodeNames": [
+        "Build detection scenarios",
+        "Run detector"
+      ],
+      "description": "18 made-up histories (normal, silent, error spike and edge cases) run through the real detector code."
+    },
+    {
+      "id": "2bc03fc2-048c-484f-a7c1-945e629920b4",
+      "name": "Draft checks",
+      "nodeNames": [
+        "Build draft check cases",
+        "Run draft checks"
+      ],
+      "description": "10 good and bad drafts run through the real Check draft code. No AI call."
+    },
+    {
+      "id": "baa9c29e-9d14-46f1-b8ee-80896519129f",
+      "name": "Report",
+      "nodeNames": [
+        "Compare expected vs actual",
+        "Save test results",
+        "Summary"
+      ],
+      "description": "Counts passes, false alarms and missed alerts, and saves every case."
+    }
+  ],
+  "tags": []
+}

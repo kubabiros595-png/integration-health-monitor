@@ -1,0 +1,498 @@
+{
+  "name": "IHM Intake Tests",
+  "nodes": [
+    {
+      "id": "1dc590cc-f527-4e45-8e5a-76d5dbf0a50a",
+      "name": "Run intake tests",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "8ca2d280-5da7-429f-b6d0-b3ae63fa7d93",
+      "name": "Get test cases",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        272,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "LxernC3dAS1yDzjx",
+          "cachedResultName": "IHM Intake Cases"
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "id",
+        "orderByDirection": "ASC"
+      }
+    },
+    {
+      "id": "5968b9e3-4637-46cd-a0c5-fa4ab2ebbf80",
+      "name": "Build test requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// One request per test case. Signing happens later, right before each send, so every timestamp is exact.\n// Change WEBHOOK_URL to your own instance.\nconst WEBHOOK_URL = 'https://YOUR-INSTANCE.app.n8n.cloud/webhook/ihm/events';\nconst runId = 'R' + Date.now().toString(36).toUpperCase();\nconst out = [];\nfor (const c of $input.all().map(i => i.json)) {\n  const shop = c.shop_id;\n  const m = c.mutation;\n  const eventId = 'evt_' + runId + c.event_ref.toUpperCase();\n  const body = {\n    event_id: eventId,\n    event_type: c.event_type,\n    occurred_at: new Date(Date.now() - 30000).toISOString(),\n    shop_id: shop,\n    data: c.event_type === 'order.created'\n      ? { order_id: 'ORD-' + c.event_ref.toUpperCase(), total: 49.9, currency: 'EUR' }\n      : { customer_id: 'CUS-' + c.event_ref.toUpperCase(), email_opt_in: true }\n  };\n  let tsOffset = 0;\n  let secretOf = shop;\n  let contentType = 'application/json';\n  let rawOverride = null;\n\n  if (m === 'total_zero') body.data.total = 0;\n  if (m === 'extra_field') body.data.gift_note = 'Happy birthday';\n  if (m === 'unicode_name') body.data.display_name = 'Zoë Łukasz-Müller';\n  if (m === 'ts_age_290') tsOffset = -290;\n  if (m === 'ts_future_60') tsOffset = 60;\n  if (m === 'ts_age_310') tsOffset = -310;\n  if (m === 'ts_age_600') tsOffset = -600;\n  if (m === 'ts_future_400') tsOffset = 400;\n  if (m === 'wrong_secret') secretOf = 'wrong';\n  if (m === 'other_shop_secret') secretOf = 'shop_mossbank';\n  if (m === 'drop_event_id') delete body.event_id;\n  if (m === 'drop_event_type') delete body.event_type;\n  if (m === 'drop_occurred_at') delete body.occurred_at;\n  if (m === 'drop_data') delete body.data;\n  if (m === 'unknown_event_type') body.event_type = 'order.deleted';\n  if (m === 'total_as_string') body.data.total = '49.90';\n  if (m === 'total_negative') body.data.total = -5;\n  if (m === 'optin_as_string') body.data.email_opt_in = 'yes';\n  if (m === 'currency_lowercase') body.data.currency = 'eur';\n  if (m === 'shop_mismatch') body.shop_id = 'shop_tallowick';\n  if (m === 'bad_event_id') body.event_id = 'order-123';\n  if (m === 'bad_date') body.occurred_at = 'yesterday';\n  if (m === 'drop_customer_id') delete body.data.customer_id;\n  if (m === 'changed_total') body.data.total = 999;\n  if (m === 'invalid_json') {\n    rawOverride = '{\"event_id\": \"' + eventId + '\", \"event_type\": \"order.created\",';\n    // The n8n HTTP Request node re-encodes a non-JSON body sent as application/json,\n    // so the broken body is sent as text/plain to keep the bytes exactly as signed.\n    contentType = 'text/plain';\n  }\n\n  out.push({ json: { ...c, run_id: runId, test_tag: runId + ':' + c.case_id, url: WEBHOOK_URL,\n    body_signed: rawOverride !== null ? rawOverride : JSON.stringify(body),\n    body_pretty: JSON.stringify(body, null, 2),\n    ts_offset: tsOffset, secret_of: secretOf, content_type: contentType,\n    replay_key: shop + ':' + c.event_ref } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "777e5700-a4da-4030-85d1-908493b640ad",
+      "name": "Send to webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        720,
+        128
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json.headers) }}",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "={{ $json.content_type }}",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "ca5e6e9a-1f7c-4917-97e3-0b398625e190",
+      "name": "Wait for logs",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        128
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "executeOnce": true,
+      "webhookId": "05246358-7193-4266-ae7d-b844e3d29c1f"
+    },
+    {
+      "id": "b5b72be1-3a6a-46bb-9ddd-52e94f416167",
+      "name": "Get log rows of this run",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1024,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "kLknagWQz4l8RCHZ",
+          "cachedResultName": "IHM Request Log"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "test_run",
+              "condition": "like",
+              "keyValue": "={{ $('Build test requests').first().json.run_id + ':%' }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "23ab39bf-b337-41ac-80c9-0c61b7219f09",
+      "name": "Get stored events of this run",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "JhY5TUrGrTqxMh4I",
+          "cachedResultName": "IHM Events"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "test_run",
+              "condition": "like",
+              "keyValue": "={{ $('Build test requests').first().json.run_id + ':%' }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "5c56c4b8-4078-4b1e-8a22-ada126280e35",
+      "name": "Compare expected vs actual",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// A case passes only if the HTTP status, the logged outcome and the stored/not stored result all match.\n// The loop ran once per case, so each run of 'Sign now' and 'Send to webhook' belongs to one case.\nconst n = $('Get test cases').all().length;\nconst cases = [];\nconst responses = [];\nfor (let i = 0; i < n; i++) {\n  cases.push($('Sign now').all(0, i)[0].json);\n  responses.push($('Send to webhook').all(0, i)[0].json);\n}\nconst logs = $('Get log rows of this run').all().map(i => i.json).filter(r => r.test_run);\nconst events = $('Get stored events of this run').all().map(i => i.json).filter(r => r.test_run);\nconst runAt = new Date().toISOString();\n\nreturn cases.map((c, idx) => {\n  const res = responses[idx] || {};\n  const status = res.statusCode;\n  const myLogs = logs.filter(l => l.test_run === c.test_tag);\n  const outcome = myLogs.length === 1 ? myLogs[0].outcome : (myLogs.length === 0 ? 'no log row' : myLogs.length + ' log rows');\n  const stored = events.some(e => e.test_run === c.test_tag);\n  const passed = status === c.expected_status && outcome === c.expected_outcome && stored === c.expected_stored;\n  return { json: {\n    run_id: c.run_id,\n    run_at: runAt,\n    suite: 'intake',\n    case_id: c.case_id,\n    what_it_tests: c.what_it_tests,\n    expected: c.expected_status + ' ' + c.expected_outcome + (c.expected_stored ? ' stored' : ' not stored'),\n    actual: status + ' ' + outcome + (stored ? ' stored' : ' not stored'),\n    passed,\n    detail: myLogs.length ? (myLogs[0].reason || '') : JSON.stringify(res.body || '').slice(0, 200)\n  } };\n});"
+      }
+    },
+    {
+      "id": "8cefa578-263f-4c20-a3bb-0de44ff08edc",
+      "name": "Save test results",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1328,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "lVjiLJqN9OgQ6lmq",
+          "cachedResultName": "IHM Test Results"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "run_id",
+              "displayName": "run_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "run_at",
+              "displayName": "run_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "suite",
+              "displayName": "suite",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "case_id",
+              "displayName": "case_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "what_it_tests",
+              "displayName": "what_it_tests",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "expected",
+              "displayName": "expected",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actual",
+              "displayName": "actual",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "passed",
+              "displayName": "passed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "detail",
+              "displayName": "detail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3e1fc19d-a1ac-482a-ba0d-87a88538dfa6",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rows = $('Compare expected vs actual').all().map(i => i.json);\nconst failed = rows.filter(r => !r.passed);\nreturn [{ json: { run_id: rows[0] && rows[0].run_id, cases: rows.length, passed: rows.length - failed.length, failed: failed.length, failures: failed.map(f => f.case_id + ': expected ' + f.expected + ', got ' + f.actual + ' (' + f.detail + ')') } }];"
+      }
+    },
+    {
+      "id": "b1ea65f9-e572-41ff-8135-ef000cd4d810",
+      "name": "One request at a time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "a404bb98-b20e-4169-b584-baf942bf0599",
+      "name": "Sign now",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        120
+      ],
+      "parameters": {
+        "jsCode": "// Signs one request right before it is sent, the same way a real shop would.\n// Signature = HMAC-SHA256(shop secret, \"<timestamp>.<raw body>\"). Secrets come from n8n Variables.\nconst crypto = require('crypto');\nconst SECRET = {\n  shop_mossbank: $vars.IHM_SECRET_MOSSBANK,\n  shop_quillmoor: $vars.IHM_SECRET_QUILLMOOR,\n  shop_tallowick: $vars.IHM_SECRET_TALLOWICK,\n  wrong: 'this-is-not-the-shop-secret'\n};\nconst c = $input.first().json;\nif (!SECRET[c.shop_id] && c.shop_id !== 'shop_unknown') throw new Error('Variable missing for ' + c.shop_id);\n\n// remembers the first signed request per event, so a later case can replay it byte for byte\nconst store = $getWorkflowStaticData('global');\nif (store.ihm_run !== c.run_id) { store.ihm_run = c.run_id; store.ihm_sent = {}; }\n\nconst m = c.mutation;\nconst ts = Math.floor(Date.now() / 1000) + c.ts_offset;\nconst secret = SECRET[c.secret_of] || 'unknown-shop-has-no-secret';\nlet raw = c.body_signed;\nconst signature = 'v1=' + crypto.createHmac('sha256', secret).update(String(ts) + '.' + raw, 'utf8').digest('hex');\nconst headers = { 'Content-Type': c.content_type, 'X-IHM-Shop': c.shop_id, 'X-IHM-Timestamp': String(ts), 'X-IHM-Signature': signature };\n\nif (m === 'tamper_body') raw = raw.replace('49.9', '4.99');\nif (m === 'reformatted_body') raw = c.body_pretty;\nif (m === 'tamper_timestamp') headers['X-IHM-Timestamp'] = String(ts - 30);\nif (m === 'no_signature') delete headers['X-IHM-Signature'];\nif (m === 'bad_sig_format') headers['X-IHM-Signature'] = signature.slice(3);\nif (m === 'no_timestamp') delete headers['X-IHM-Timestamp'];\nif (m === 'ts_not_number') headers['X-IHM-Timestamp'] = 'yesterday';\nif (m === 'replay_exact') {\n  const first = store.ihm_sent[c.replay_key];\n  raw = first.raw;\n  Object.assign(headers, first.headers);\n}\nif (!store.ihm_sent[c.replay_key]) store.ihm_sent[c.replay_key] = { raw, headers: { ...headers } };\n\nheaders['X-IHM-Test-Run'] = c.test_tag;\nreturn [{ json: { ...c, headers, raw } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    }
+  ],
+  "connections": {
+    "Run intake tests": {
+      "main": [
+        [
+          {
+            "node": "Get test cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get test cases": {
+      "main": [
+        [
+          {
+            "node": "Build test requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for logs": {
+      "main": [
+        [
+          {
+            "node": "Get log rows of this run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get log rows of this run": {
+      "main": [
+        [
+          {
+            "node": "Get stored events of this run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get stored events of this run": {
+      "main": [
+        [
+          {
+            "node": "Compare expected vs actual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare expected vs actual": {
+      "main": [
+        [
+          {
+            "node": "Save test results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save test results": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build test requests": {
+      "main": [
+        [
+          {
+            "node": "One request at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One request at a time": {
+      "main": [
+        [
+          {
+            "node": "Wait for logs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sign now",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign now": {
+      "main": [
+        [
+          {
+            "node": "Send to webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to webhook": {
+      "main": [
+        [
+          {
+            "node": "One request at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "nodeGroups": [
+    {
+      "id": "a4421e07-3973-494b-821b-e27e3767d231",
+      "name": "Check",
+      "nodeNames": [
+        "Wait for logs",
+        "Get log rows of this run",
+        "Get stored events of this run",
+        "Compare expected vs actual"
+      ],
+      "description": "Reads the request log and stored events of this run and compares them with the expected result."
+    },
+    {
+      "id": "d71fc699-9aef-48ef-ab08-fb54a2bc4914",
+      "name": "Report",
+      "nodeNames": [
+        "Save test results",
+        "Summary"
+      ],
+      "description": "Saves pass/fail per case and returns a short summary."
+    }
+  ],
+  "tags": []
+}
