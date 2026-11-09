@@ -4,6 +4,13 @@ A portfolio project using fictional data. A SaaS company receives webhooks from 
 
 **Built and tested, not deployed.** It runs on an n8n trial instance with fictional shops. It has never been used with a real client.
 
+## At a glance
+
+- **Webhook security:** HMAC-SHA256 on the raw body, 5-minute timestamp window, 64 KB size limit, idempotency that holds under parallel requests
+- **Monitoring:** silence measured against each integration's own rhythm, plus an error-rate rule; 0 false alarms and 0 missed alerts in 18 scenarios
+- **AI with guardrails:** rules decide, Claude only words the message, code checks the numbers, secrets and CSM rules, a person approves
+- **Tests:** 45/45 signed requests against the live webhook, 18/18 detector scenarios, 14/14 draft checks; what failed first is documented below
+
 ## Problem
 
 Integrations rarely fail loudly. A store changes a plugin, rotates a secret or moves to a new domain, and events simply stop arriving. Nothing errors on our side, because nothing reaches us. The client finds out days later, from their own numbers.
@@ -124,6 +131,7 @@ After all tests passed, I reviewed the project for weak points and added three t
 - **One secret per shop, no rotation.** A real setup would accept two secrets for a short time while a shop rotates its secret.
 - **The `X-IHM-Test-Run` header** marks test traffic so the monitor ignores it. It is not signed, so a real deployment would remove it or restrict it.
 - **Silence rule has no time-of-day pattern.** A shop that is quiet every night may need a night-time profile. The 7-day percentile helps, but it is not a full seasonal model.
+- **The daily report has no automated tests.** It was checked on one demo run (3 shops, results in `sample-results.md`).
 - **Thresholds were not tuned on real traffic.** 3 × the usual gap, the 60-minute floor and 10% are reasonable starting points.
 - **Fictional data only.** Shops, events and secrets are made up. Nothing comes from my current job.
 - Test executions in n8n keep request data, including test signatures. A real deployment needs retention settings.
