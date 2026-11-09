@@ -12,9 +12,9 @@ I saw this at work: an automation stopped sending without any error, and 0 of 28
 
 ## What it does
 
-1. **Receives webhooks safely.** Checks an HMAC-SHA256 signature over the raw body and a timestamp (rejects anything older than 5 minutes or more than 5 minutes in the future). A bad signature gets 401 and a log entry.
+1. **Receives webhooks safely.** Refuses bodies over 64 KB (413) before doing any work, then checks an HMAC-SHA256 signature over the raw body and a timestamp (rejects anything older than 5 minutes or more than 5 minutes in the future). A bad signature gets 401 and a log entry.
 2. **Validates the payload.** Required fields and types, with every problem listed. A bad payload gets 400 and a log entry with the reasons.
-3. **Ignores duplicates.** The same shop + `event_id` is processed only once (idempotency). Repeats get 200 and are only logged.
+3. **Ignores duplicates, even parallel ones.** The same shop + `event_id` is processed only once (idempotency). Repeats get 200 and are only logged. If identical requests arrive at the same moment, a check after saving keeps only the first copy.
 4. **Stores and answers fast.** A valid event is saved, then the sender gets 200. The log is written after the answer.
 5. **Detects silence and error spikes every hour.** Each integration is compared with its own normal rhythm. A second rule fires when more than 10% of requests in the last hour were rejected.
 6. **Drafts a message for the CSM.** Rules find the problem. Claude writes a short English draft (what happened, what to check, next step). Code checks the draft, and the alert waits as `pending review`. Nothing is sent to the client.
@@ -30,7 +30,9 @@ flowchart LR
   V -- no --> R400[400 + log with reasons]
   V -- yes --> D{shop + event_id<br/>seen before?}
   D -- yes --> R200d[200 duplicate + log]
-  D -- no --> ST[(Save event)] --> R200[200 accepted] --> L[(Request log)]
+  D -- no --> ST[(Save event)] --> RC{First stored copy?}
+  RC -- yes --> R200[200 accepted] --> L[(Request log)]
+  RC -- no --> DEL[Delete own copy<br/>200 duplicate]
 
   subgraph Every hour
     H[Load 7 days of events<br/>and last hour of requests] --> DET{Rules: silent for its rhythm?<br/>more than 10% rejected?}
@@ -57,6 +59,10 @@ The shop sends three headers:
 
 The signature covers the timestamp, so the timestamp cannot be changed. The comparison is constant-time. Each shop has its own secret, stored only in n8n Variables (`IHM_SECRET_<SHOP>`). This repository contains only the variable names.
 
+### Idempotency that holds under parallel requests
+
+A lookup before saving catches normal retries. It cannot catch two identical requests that arrive at the same moment, because both look before either has saved. My first test run showed exactly this. So after saving, the workflow reads all rows with the same shop + `event_id` again. The row with the lowest id wins, and any later copy deletes itself and answers 200 `duplicate`. Test D06 sends the same signed request three times at once: one is accepted, two are answered as duplicates, and one row is stored.
+
 ### Silence detector
 
 A fixed rule such as "alert after 1 hour of silence" does not work, because shops have different rhythms. For each integration:
@@ -76,7 +82,7 @@ In the last 60 minutes, rejected ÷ (accepted + rejected). Alert when the rate i
 - **No AI in the decision.** Rules decide whether there is a problem, so every alert can be explained.
 - **Code chooses the content.** It picks the facts (numbers) and what the client should check, for example "was the signing secret changed?" when most rejections are signature failures.
 - **Claude only writes the wording.** It receives the facts and the checks, never secrets or other clients' data.
-- **Code checks the draft.** Every number must come from the facts, the main number must be there, there must be no secret or key-like string and no other client's name, and the length must be reasonable. If a secret or key-like string is found, the draft is removed and the check notes quote none of it.
+- **Code checks the draft.** Every number must come from the facts, the main number must be there, there must be no secret or key-like string and no other client's name, and the length must be reasonable. It also blocks CSM mistakes: promising a fix or a deadline, asking for a call, or offering free work or a discount. If a secret or key-like string is found, the draft is removed and the check notes quote none of it.
 - **A person approves.** Alerts are saved as `pending review`. The same problem does not create a new alert for 6 hours, so a second run makes no AI calls.
 
 ## Test results
@@ -85,10 +91,10 @@ Two test workflows run the real code, and I set every expected answer before run
 
 | Test | First run | Final run |
 | --- | --- | --- |
-| Webhook intake: 43 signed requests sent to the live webhook URL (valid, bad signature, old or future timestamp, missing field, wrong type, duplicate, replay) | 38 of 43 | **43 of 43** |
+| Webhook intake: 45 signed requests sent to the live webhook URL (valid, bad signature, old or future timestamp, missing field, wrong type, oversized body, duplicate, replay, 3 identical requests at once) | 38 of 43 | **45 of 45** |
 | Silence and error-spike detector: 18 scenarios | 18 of 18 (results not saved, see below) | **18 of 18** |
 | False alarms / missed alerts in those 18 scenarios | 0 / 0 | **0 / 0** |
-| Draft checks: 10 good and bad drafts | 10 of 10, but a leak found (see below) | **10 of 10** |
+| Draft checks: 14 good and bad drafts | 10 of 10, but a leak found (see below) | **14 of 14** |
 | Demo run: 3 shops (healthy, silent, error spike) | 2 correct alerts, 0 false alarms | same |
 | Second monitor run right after the first | 0 new alerts, 0 AI calls | same |
 
@@ -104,9 +110,17 @@ These are tests on fictional data with expected answers I chose. They show that 
 - **Secret digits in the check notes.** When a test draft contained the real signing secret, the check blocked it but its note "numbers not in the facts" listed digits taken from the secret. The note no longer lists numbers when a secret or key is found, the draft is removed before saving, and the test now fails if any part of the secret appears in the notes.
 - **Test results not saved on the first monitor run.** The results table was missing two columns (`false_alarms`, `missed`). I added them.
 
+## Improvements after the first version
+
+After all tests passed, I reviewed the project for weak points and added three things:
+
+- **Parallel duplicates.** The first test run had shown that two identical requests at the same moment could both pass the duplicate lookup. Added the check after saving described above, and test D06 (3 copies at once). In the final run both extra copies were caught by that new check.
+- **Body size limit.** Bodies over 64 KB now get 413 before signature work, so a flood of huge requests costs little. Test F15.
+- **CSM rules in the draft check.** Drafts that promise a fix or a deadline, ask for a call, or offer free work are blocked. Tests C11–C13, plus C14 to make sure "feel free to reply" is not blocked.
+
 ## Limits
 
-- **Duplicate check is not atomic.** Two identical requests arriving at the same moment could both pass the lookup. In production I would add a unique constraint on shop + `event_id` in a real database. n8n Data Tables do not support one.
+- **Duplicates are resolved after saving, not prevented by the database.** For a moment two copies can exist before the later one deletes itself. In production I would use a unique constraint on shop + `event_id` in a real database. n8n Data Tables do not support one.
 - **One secret per shop, no rotation.** A real setup would accept two secrets for a short time while a shop rotates its secret.
 - **The `X-IHM-Test-Run` header** marks test traffic so the monitor ignores it. It is not signed, so a real deployment would remove it or restrict it.
 - **Silence rule has no time-of-day pattern.** A shop that is quiet every night may need a night-time profile. The 7-day percentile helps, but it is not a full seasonal model.
@@ -119,10 +133,10 @@ These are tests on fictional data with expected answers I chose. They show that 
 - `IHM Webhook Intake.json`: receives, verifies, validates, deduplicates and stores webhooks
 - `IHM Health Monitor.json`: hourly silence and error-spike detection, AI draft, draft checks, review queue
 - `IHM Daily Health Report.json`: one report line per client per day
-- `IHM Intake Tests.json`: sends 43 signed test requests and compares the results
-- `IHM Monitor Tests.json`: 18 detector scenarios and 10 draft-check cases
+- `IHM Intake Tests.json`: sends 45 test cases as signed requests and compares the results
+- `IHM Monitor Tests.json`: 18 detector scenarios and 14 draft-check cases
 - `IHM Demo Data.json`: loads a fictional 7-day history for the three shops
-- `intake_test_cases.csv`: the 43 intake cases with expected results
+- `intake_test_cases.csv`: the 45 intake cases with expected results
 - `test_results_intake.csv`, `test_results_monitor.csv`: final test runs, case by case
 - `test-results.md`: test method, all runs and what changed between them
 - `sample-results.md`: the two alerts and drafts from the demo run, and the daily report

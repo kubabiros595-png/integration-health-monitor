@@ -41,13 +41,17 @@ Sklepy wysyłają ten sam webhook ponownie, gdy nie są pewne, czy dotarł (np. 
 
 Klucz to **sklep + event_id**, bo dwa różne sklepy mogą przypadkiem użyć tego samego numeru (test D05).
 
+**Wyścig (dwa identyczne żądania w tej samej chwili).** Oba sprawdzają tabelę, zanim którekolwiek zdążyło się zapisać, więc oba widzą „nowe”. Pierwsze testy to pokazały. Dlatego po zapisie jest drugie sprawdzenie: czytam wszystkie wiersze z tym samym sklepem i `event_id`. Wygrywa wiersz z najniższym numerem, a późniejsza kopia sama się usuwa i odpowiada „duplicate”. Test D06 wysyła to samo żądanie 3 razy naraz: 1 przyjęte, 2 duplikaty, 1 zapis.
+
 Duplikaty **nie są błędami**. Detektor ich nie liczy do odsetka błędów (scenariusz M11).
 
 ## Dlaczego odpowiedź 200 musi być szybka
 
 Sklep czeka na naszą odpowiedź tylko kilka sekund. Jeśli się spóźnimy, uzna, że wiadomość nie doszła, i wyśle ją ponownie, a po kilku porażkach może w ogóle wyłączyć webhook. Wtedy mamy właśnie cichą awarię.
 
-Dlatego odbiór robi tylko to, co konieczne: podpis, walidacja, sprawdzenie duplikatu, zapis. Odpowiedź idzie **zaraz po zapisie**, a log piszemy już po odpowiedzi. 200 zawsze znaczy „mamy to zapisane”. Cięższe rzeczy (analiza, AI, raporty) dzieją się osobno, w innych workflowach.
+Najpierw sprawdzamy rozmiar: treść powyżej 64 KB dostaje od razu **413** (za duże), zanim liczymy jakikolwiek podpis. Prawdziwe zdarzenie ma kilkaset bajtów, więc to tania ochrona przed zasypaniem dużymi żądaniami.
+
+Odbiór robi tylko to, co konieczne: podpis, walidacja, sprawdzenie duplikatu, zapis. Odpowiedź idzie **zaraz po zapisie**, a log piszemy już po odpowiedzi. 200 zawsze znaczy „mamy to zapisane”. Cięższe rzeczy (analiza, AI, raporty) dzieją się osobno, w innych workflowach.
 
 ## Jakie odpowiedzi dostaje sklep
 
@@ -55,6 +59,7 @@ Dlatego odbiór robi tylko to, co konieczne: podpis, walidacja, sprawdzenie dupl
 | --- | --- | --- |
 | Zły podpis, nieznany sklep, zły lub stary czas | 401 | tylko „unauthorized”, bez szczegółów (nie podpowiadamy atakującemu) |
 | Brak pola, zły typ, zły JSON | 400 | lista problemów, żeby programista sklepu wiedział, co poprawić |
+| Treść powyżej 64 KB | 413 | „payload too large” |
 | Duplikat | 200 | „duplicate” |
 | Wszystko dobrze | 200 | „accepted” |
 
@@ -85,7 +90,7 @@ W ostatniej godzinie liczę: odrzucone / (przyjęte + odrzucone). Alert, gdy wyn
 - **Reguły w kodzie** decydują, czy jest problem. AI nie decyduje o niczym.
 - Kod wybiera **fakty** (liczby) i **co klient ma sprawdzić** (np. przy błędach podpisu: czy zmienił sekret).
 - **Claude** tylko ubiera to w krótki mail po angielsku: co się stało, co sprawdzić, następny krok.
-- Potem **kod sprawdza tekst**: każda liczba musi pochodzić z faktów, musi być główna liczba, nie może być sekretu ani niczego, co wygląda na klucz lub podpis, nie może być nazwy innego klienta.
+- Potem **kod sprawdza tekst**: każda liczba musi pochodzić z faktów, musi być główna liczba, nie może być sekretu ani niczego, co wygląda na klucz lub podpis, nie może być nazwy innego klienta. Blokuje też błędy CSM-a: obietnicę naprawy albo terminu, propozycję calla i darmową pracę.
 - Alert zapisuje się jako „pending review”. Do klienta nic nie idzie samo.
 - Ten sam problem nie daje nowego alertu przez 6 godzin, więc drugie uruchomienie nie wywołuje AI ani razu.
 
@@ -106,7 +111,7 @@ Because the signature is calculated on the exact bytes the sender sent. Parsing 
 Without it, someone who captured a real request could replay it later and the signature would still match. The timestamp is part of the signed string, so it cannot be changed, and anything older than five minutes is rejected. Exact repeats inside those five minutes are caught by the event_id check.
 
 **3. What is idempotency and how did you implement it?**
-Processing the same event twice has the same effect as processing it once. Senders retry when they are unsure, so duplicates are normal. Before saving, I look up shop plus event_id. If it exists, I return 200 so they stop retrying, log it as a duplicate and do nothing else. The limit: two identical requests at the exact same moment could both pass, so in production I would add a unique constraint in the database.
+Processing the same event twice has the same effect as processing it once. Senders retry when they are unsure, so duplicates are normal. Before saving, I look up shop plus event_id. If it exists, I return 200 so they stop retrying, log it as a duplicate and do nothing else. My first tests showed that two identical requests at the same moment could both pass that lookup, so I added a check after saving: the first stored copy wins and any later copy deletes itself. A test sends three copies at once and only one is stored. In production I would use a unique constraint in the database instead.
 
 **4. How does the silence detector avoid false alarms?**
 It learns each integration's own rhythm: the 90th percentile of the gaps between events over seven days. It alerts only after three times that gap, with a 60-minute floor. A shop that sends every two hours is not flagged after one quiet hour, and a new integration with fewer than 20 events is not judged at all. In my tests that gave zero false alarms and zero missed alerts.

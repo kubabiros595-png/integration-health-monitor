@@ -42,3 +42,5 @@ D02,Same event_id sent again (retry),shop_mossbank,order.created,none,d01,200,du
 D03,Exact replay of the same signed request within 5 min,shop_quillmoor,order.created,replay_exact,v02,200,duplicate,false
 D04,Same event_id with a different payload,shop_tallowick,order.created,changed_total,v03,200,duplicate,false
 D05,Same event_id from a different shop is a new event,shop_quillmoor,order.created,none,d01,200,accepted,true
+F15,Body larger than 64 KB,shop_tallowick,order.created,too_large,f15,413,rejected_too_large,false
+D06,3 identical requests sent at the same moment,shop_tallowick,order.created,parallel_triple,d06,200,accepted+duplicate+duplicate,true

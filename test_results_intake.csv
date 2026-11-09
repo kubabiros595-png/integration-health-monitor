@@ -1,44 +1,46 @@
 run_id,run_at,suite,case_id,what_it_tests,expected,actual,passed,detail
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V01,Valid order.created (Mossbank),200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V02,Valid order.created (Quillmoor),200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V03,Valid order.created (Tallowick),200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V04,Valid customer.updated (Mossbank),200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V05,Valid customer.updated (Quillmoor),200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V06,Valid customer.updated (Tallowick),200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V07,Order total of 0 is allowed,200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V08,Extra unknown field is allowed,200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V09,Timestamp 290 s old is still inside 5 min,200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V10,Timestamp 60 s in the future (clock skew) is allowed,200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,V11,Non-ASCII text in the body,200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S01,Signed with a wrong secret,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S02,Body changed after signing,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S03,Signature header missing,401 rejected_signature not stored,401 rejected_signature not stored,True,missing signature header
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S04,Signature without v1= prefix,401 rejected_signature not stored,401 rejected_signature not stored,True,malformed signature header
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S05,Unknown shop id,401 rejected_signature not stored,401 rejected_signature not stored,True,unknown shop
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S06,Signed with another shop's secret,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S07,Signed compact JSON but sent pretty-printed,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,S08,Timestamp changed after signing,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,T01,Timestamp 310 s old,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp too old (310 s)
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,T02,Timestamp 10 min old (old request replayed),401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp too old (601 s)
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,T03,Timestamp 400 s in the future,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp in the future (400 s)
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,T04,Timestamp header missing,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,missing timestamp header
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,T05,Timestamp is not a number,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp is not unix seconds
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F01,Missing event_id,400 rejected_validation not stored,400 rejected_validation not stored,True,missing event_id
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F02,Missing event_type,400 rejected_validation not stored,400 rejected_validation not stored,True,missing event_type
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F03,Missing occurred_at,400 rejected_validation not stored,400 rejected_validation not stored,True,missing occurred_at
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F04,Missing data object,400 rejected_validation not stored,400 rejected_validation not stored,True,missing data
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F05,Unknown event_type,400 rejected_validation not stored,400 rejected_validation not stored,True,unknown event_type
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F06,Order total sent as text,400 rejected_validation not stored,400 rejected_validation not stored,True,data.total must be a number
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F07,Negative order total,400 rejected_validation not stored,400 rejected_validation not stored,True,data.total must be 0 or more
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F08,email_opt_in sent as text,400 rejected_validation not stored,400 rejected_validation not stored,True,data.email_opt_in must be true or false
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F09,Currency in lowercase,400 rejected_validation not stored,400 rejected_validation not stored,True,data.currency must be 3 capital letters
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F10,shop_id in body differs from header,400 rejected_validation not stored,400 rejected_validation not stored,True,shop_id in body does not match the signing shop
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F11,Body is not valid JSON,400 rejected_validation not stored,400 rejected_validation not stored,True,body is not valid JSON
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F12,event_id in wrong format,400 rejected_validation not stored,400 rejected_validation not stored,True,event_id must look like evt_ + 8-40 letters/digits
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F13,occurred_at is not a date,400 rejected_validation not stored,400 rejected_validation not stored,True,occurred_at must be an ISO 8601 date-time
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,F14,Missing customer_id in customer.updated,400 rejected_validation not stored,400 rejected_validation not stored,True,data.customer_id must be text
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,D01,First delivery of an event,200 accepted stored,200 accepted stored,True,
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,D02,Same event_id sent again (retry),200 duplicate not stored,200 duplicate not stored,True,"event_id already processed, ignored"
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,D03,Exact replay of the same signed request within 5 min,200 duplicate not stored,200 duplicate not stored,True,"event_id already processed, ignored"
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,D04,Same event_id with a different payload,200 duplicate not stored,200 duplicate not stored,True,"event_id already processed, ignored"
-RMW9MVD4O,2026-11-09T19:07:55.150Z,intake,D05,Same event_id from a different shop is a new event,200 accepted stored,200 accepted stored,True,
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V01,Valid order.created (Mossbank),200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV01""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V02,Valid order.created (Quillmoor),200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV02""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V03,Valid order.created (Tallowick),200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV03""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V04,Valid customer.updated (Mossbank),200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV04""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V05,Valid customer.updated (Quillmoor),200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV05""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V06,Valid customer.updated (Tallowick),200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV06""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V07,Order total of 0 is allowed,200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV07""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V08,Extra unknown field is allowed,200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV08""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V09,Timestamp 290 s old is still inside 5 min,200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV09""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V10,Timestamp 60 s in the future (clock skew) is allowed,200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV10""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,V11,Non-ASCII text in the body,200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVV11""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S01,Signed with a wrong secret,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S02,Body changed after signing,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S03,Signature header missing,401 rejected_signature not stored,401 rejected_signature not stored,True,missing signature header
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S04,Signature without v1= prefix,401 rejected_signature not stored,401 rejected_signature not stored,True,malformed signature header
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S05,Unknown shop id,401 rejected_signature not stored,401 rejected_signature not stored,True,unknown shop
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S06,Signed with another shop's secret,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S07,Signed compact JSON but sent pretty-printed,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,S08,Timestamp changed after signing,401 rejected_signature not stored,401 rejected_signature not stored,True,signature does not match
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,T01,Timestamp 310 s old,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp too old (310 s)
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,T02,Timestamp 10 min old (old request replayed),401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp too old (600 s)
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,T03,Timestamp 400 s in the future,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp in the future (399 s)
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,T04,Timestamp header missing,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,missing timestamp header
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,T05,Timestamp is not a number,401 rejected_timestamp not stored,401 rejected_timestamp not stored,True,timestamp is not unix seconds
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F01,Missing event_id,400 rejected_validation not stored,400 rejected_validation not stored,True,missing event_id
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F02,Missing event_type,400 rejected_validation not stored,400 rejected_validation not stored,True,missing event_type
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F03,Missing occurred_at,400 rejected_validation not stored,400 rejected_validation not stored,True,missing occurred_at
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F04,Missing data object,400 rejected_validation not stored,400 rejected_validation not stored,True,missing data
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F05,Unknown event_type,400 rejected_validation not stored,400 rejected_validation not stored,True,unknown event_type
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F06,Order total sent as text,400 rejected_validation not stored,400 rejected_validation not stored,True,data.total must be a number
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F07,Negative order total,400 rejected_validation not stored,400 rejected_validation not stored,True,data.total must be 0 or more
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F08,email_opt_in sent as text,400 rejected_validation not stored,400 rejected_validation not stored,True,data.email_opt_in must be true or false
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F09,Currency in lowercase,400 rejected_validation not stored,400 rejected_validation not stored,True,data.currency must be 3 capital letters
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F10,shop_id in body differs from header,400 rejected_validation not stored,400 rejected_validation not stored,True,shop_id in body does not match the signing shop
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F11,Body is not valid JSON,400 rejected_validation not stored,400 rejected_validation not stored,True,body is not valid JSON
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F12,event_id in wrong format,400 rejected_validation not stored,400 rejected_validation not stored,True,event_id must look like evt_ + 8-40 letters/digits
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F13,occurred_at is not a date,400 rejected_validation not stored,400 rejected_validation not stored,True,occurred_at must be an ISO 8601 date-time
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F14,Missing customer_id in customer.updated,400 rejected_validation not stored,400 rejected_validation not stored,True,data.customer_id must be text
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,D01,First delivery of an event,200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVD01""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,D02,Same event_id sent again (retry),200 duplicate not stored,200 duplicate not stored,True,"event_id already processed, ignored"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,D03,Exact replay of the same signed request within 5 min,200 duplicate not stored,200 duplicate not stored,True,"event_id already processed, ignored"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,D04,Same event_id with a different payload,200 duplicate not stored,200 duplicate not stored,True,"event_id already processed, ignored"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,D05,Same event_id from a different shop is a new event,200 accepted stored,200 accepted stored,True,"{""status"":""accepted"",""event_id"":""evt_RMW9N72MVD01""}"
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,F15,Body larger than 64 KB,413 rejected_too_large not stored,413 rejected_too_large not stored,True,body larger than 64 KB
+RMW9N72MV,2026-11-09T19:17:02.786Z,intake,D06,3 identical requests sent at the same moment,200 accepted+duplicate+duplicate stored,200 accepted+duplicate+duplicate stored,True,"event_id already processed (parallel request), ignored | event_id already processed (parallel request), ignored"

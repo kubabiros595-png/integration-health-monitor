@@ -27,6 +27,7 @@ Unknown extra fields are allowed and stored, so a shop can add fields without br
 | `200 {"status":"accepted"}` | stored |
 | `200 {"status":"duplicate"}` | same shop + `event_id` already stored, nothing done |
 | `400 {"error":"invalid payload","details":"..."}` | every validation problem listed |
+| `413 {"error":"payload too large"}` | body over 64 KB, refused before any signature work |
 | `401 {"error":"unauthorized"}` | unknown shop, bad or missing signature, old, future or missing timestamp. No details, so an attacker learns nothing |
 | `500 {"error":"server error"}` | signing secret not configured on our side |
 
@@ -39,10 +40,10 @@ Unknown extra fields are allowed and stored, so a shop can add fields without br
 | `IHM Integrations` | `shop_id`, `shop_name`, `active` |
 | `IHM Alerts` | `created_at`, `shop_id`, `shop_name`, `alert_type`, `facts`, `draft_subject`, `draft_body`, `check_passed`, `check_notes`, `status`, `reviewer_note` |
 | `IHM Daily Reports` | one row per client per day: counts, error rate, last event, open alerts, status, summary |
-| `IHM Intake Cases` | the 43 test cases |
+| `IHM Intake Cases` | the 45 test cases |
 | `IHM Test Results` | one row per test case per run |
 
-`outcome` is one of `accepted`, `duplicate`, `rejected_signature`, `rejected_timestamp`, `rejected_validation`, `rejected_config`.
+`outcome` is one of `accepted`, `duplicate`, `rejected_signature`, `rejected_timestamp`, `rejected_validation`, `rejected_too_large`, `rejected_config`.
 
 The request log is the error table: every rejected request has a row with the reason.
 

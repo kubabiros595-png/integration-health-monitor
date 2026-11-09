@@ -4,7 +4,7 @@ All data is fictional. I set the expected result for every case before running t
 
 ## 1. Webhook intake
 
-`IHM Intake Tests` reads the 43 cases in `intake_test_cases.csv`, builds each request, signs it the way a shop would, and sends it to the live production URL of `IHM Webhook Intake`. It then reads the request log and the events table for that run.
+`IHM Intake Tests` reads the 45 cases in `intake_test_cases.csv`, builds each request, signs it the way a shop would, and sends it to the live production URL of `IHM Webhook Intake`. It then reads the request log and the events table for that run.
 
 A case passes only if all three match:
 - the HTTP status the sender received
@@ -14,7 +14,8 @@ A case passes only if all three match:
 | Run | Cases | Passed | Failed |
 | --- | --- | --- | --- |
 | 2026-11-09 20:04 (Warsaw) | 43 | 38 | V03, D01, D02, D04, F11 |
-| 2026-11-09 20:07 (Warsaw) | 43 | **43** | none |
+| 2026-11-09 20:07 (Warsaw) | 43 | 43 | none |
+| 2026-11-09 20:16 (Warsaw), after adding F15 and D06 | 45 | **45** | none |
 
 ### What the cases cover
 
@@ -24,7 +25,8 @@ A case passes only if all three match:
 | Signature | S01–S08 | wrong secret, body changed after signing, header missing, no `v1=` prefix, unknown shop, another shop's secret, same JSON pretty-printed, timestamp changed after signing |
 | Timestamp | T01–T05 | 310 s old, 10 min old, 400 s in the future, header missing, not a number |
 | Validation | F01–F14 | each required field missing, unknown event type, number sent as text, negative total, lowercase currency, shop in body differs from header, invalid JSON, wrong `event_id` format, bad date |
-| Duplicates | D01–D05 | same event twice, exact replay of a signed request within 5 minutes, same `event_id` with different content, same `event_id` from another shop (a new event) |
+| Size | F15 | body larger than 64 KB gets 413 |
+| Duplicates | D01–D06 | same event twice, exact replay of a signed request within 5 minutes, same `event_id` with different content, same `event_id` from another shop (a new event), the same request three times at the same moment |
 
 ### Why the first run failed and what changed
 
@@ -36,7 +38,7 @@ A case passes only if all three match:
 
 Also changed: every request is now signed right before it is sent. In the first run all requests were signed at the start and some waited about 10 seconds, so the timestamp edge cases were less precise than intended (T01 arrived 320 s old instead of 310 s).
 
-The parallel run showed a real limit: two identical requests at the same moment can both pass the duplicate lookup. See Limits in the README.
+The parallel run showed a real limit: two identical requests at the same moment can both pass the duplicate lookup. I fixed it afterwards with a check after saving (the first stored copy wins, later copies delete themselves) and added D06. In the third run, both extra copies in D06 were caught by that new check (log reason "parallel request"), and only one row was stored.
 
 ## 2. Silence and error-spike detector
 
@@ -45,7 +47,8 @@ The parallel run showed a real limit: two identical requests at the same moment 
 | Run | Scenarios | Passed | False alarms | Missed |
 | --- | --- | --- | --- | --- |
 | 2026-11-09 20:04 | 18 | 18 | 0 | 0 |
-| 2026-11-09 20:07 | 18 | **18** | **0** | **0** |
+| 2026-11-09 20:07 | 18 | 18 | 0 | 0 |
+| 2026-11-09 20:16 | 18 | **18** | **0** | **0** |
 
 The first run's results were not saved to the results table, because the table was missing two columns. The results above come from that execution's output.
 
@@ -63,12 +66,13 @@ The first run's results were not saved to the results table, because the table w
 
 ## 3. Draft checks
 
-The same run sends 10 hand-written drafts to the `Check draft` node. No AI is called.
+The same run sends hand-written drafts to the `Check draft` node. No AI is called.
 
 | Run | Cases | Passed | Bad drafts let through |
 | --- | --- | --- | --- |
 | 2026-11-09 20:04 | 10 | 10 | 0 |
-| 2026-11-09 20:07 | 10 | **10** | **0** |
+| 2026-11-09 20:07 | 10 | 10 | 0 |
+| 2026-11-09 20:16, after adding C11–C14 | 14 | **14** | **0** |
 
 All 10 passed on the first run, but reading the notes showed a problem: for the draft that contained the real signing secret (C05), the note "numbers not in the facts" listed digits taken from the secret. The draft was blocked, but part of the secret would have been saved in the alerts table.
 
@@ -76,6 +80,8 @@ Changes:
 - when a secret or key-like string is found, the note no longer lists numbers
 - the draft text is replaced with `[removed: the draft contained a secret or key]` before saving
 - C05, C06 and C10 now also fail if the draft is not removed or if any 4-character piece of the secret appears in the notes
+
+Later I added CSM rules to the check: no promised fix or deadline (C11), no call (C12), no free work (C13). C14 makes sure "feel free to reply" still passes.
 
 ## 4. Demo run with the AI step
 
@@ -94,5 +100,5 @@ The drafts are in `sample-results.md`.
 
 ## Limits
 
-- 43 + 28 cases test the rules as written. They do not show how the thresholds would perform on real traffic.
+- 45 + 32 cases test the rules as written. They do not show how the thresholds would perform on real traffic.
 - Draft quality was reviewed by hand on 2 live drafts.

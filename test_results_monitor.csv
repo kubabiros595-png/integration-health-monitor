@@ -1,29 +1,33 @@
 run_id,run_at,suite,case_id,what_it_tests,expected,actual,passed,detail,false_alarms,missed
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M01,"Three integrations: one normal, one silent, one error spike","shop_quillmoor:silence, shop_tallowick:error_spike","shop_quillmoor:silence, shop_tallowick:error_spike",True,"shop_mossbank ok (quiet 2 min, limit 60 min); shop_quillmoor silent (quiet 240 min, limit 60 min); shop_tallowick error spike (quiet 2 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M02,"Busy integration, last event 2 min ago",no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M03,Busy integration silent for 4 hours,shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M04,"Low-traffic shop (every 2 h), quiet 3 h = normal for it",no alert,no alert,True,"shop_mossbank ok (quiet 180 min, limit 360 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M05,"Low-traffic shop (every 2 h), quiet 7 h",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 420 min, limit 360 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M06,"5-min rhythm, quiet 59 min (limit 60)",no alert,no alert,True,"shop_mossbank ok (quiet 59 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M07,"5-min rhythm, quiet 61 min (limit 60)",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 61 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M08,Error rate exactly 10% (2 of 20) is not above the limit,no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M09,Error rate 15% (3 of 20),shop_mossbank:error_spike,shop_mossbank:error_spike,True,"shop_mossbank error spike (quiet 2 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M10,2 of 3 rejected: too few requests to judge,no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M11,10 duplicates and 10 accepted: duplicates are not errors,no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M12,"New integration with only 4 events: still learning, no alert",no alert,no alert,True,"shop_mossbank learning (4 events, need 20 to learn the rhythm)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M13,Integration that never sent anything in 7 days,shop_mossbank:silence,shop_mossbank:silence,True,shop_mossbank silent (no events in 7 days),0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M14,"Silent, but the same alert is pending review since 2 h",no alert | skipped shop_mossbank:silence,no alert | skipped shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M15,"Silent, earlier alert is 7 h old",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M16,"Silent, earlier alert was rejected by the CSM",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M17,Validation errors 50% (10 of 20),shop_mossbank:error_spike,shop_mossbank:error_spike,True,"shop_mossbank error spike (quiet 2 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,detector,M18,Silent and error spike at the same time,"shop_mossbank:error_spike, shop_mossbank:silence","shop_mossbank:error_spike, shop_mossbank:silence",True,"shop_mossbank silent + error spike (quiet 240 min, limit 60 min)",0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C01,Good silence draft passes,pass,pass,True,,0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C02,Good error-spike draft passes,pass,pass,True,,0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C03,Wrong rate (25% instead of 23.1%),blocked,blocked,True,numbers not in the facts: 25; main number missing,0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C04,Invented number (300 orders),blocked,blocked,True,numbers not in the facts: 300,0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C05,Contains the real signing secret,"blocked, draft removed, nothing quoted","blocked, draft removed, nothing quoted",True,contains a real signing secret; contains something that looks like a key or signature; numbers not in the facts (not listed because the text contains a secret or key),0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C06,Contains a key-like hex string,"blocked, draft removed, nothing quoted","blocked, draft removed, nothing quoted",True,contains something that looks like a key or signature; numbers not in the facts (not listed because the text contains a secret or key),0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C07,Mentions another client,blocked,blocked,True,mentions another client: Quillmoor Books,0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C08,No number from the facts at all,blocked,blocked,True,main number missing,0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C09,AI call failed: no draft,blocked,blocked,True,AI call failed after retries,0,0
-MMW9MVE8T,2026-11-09T19:07:36.797Z,draft_check,C10,Contains a request signature (v1=...),"blocked, draft removed, nothing quoted","blocked, draft removed, nothing quoted",True,contains something that looks like a key or signature; numbers not in the facts (not listed because the text contains a secret or key),0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M01,"Three integrations: one normal, one silent, one error spike","shop_quillmoor:silence, shop_tallowick:error_spike","shop_quillmoor:silence, shop_tallowick:error_spike",True,"shop_mossbank ok (quiet 2 min, limit 60 min); shop_quillmoor silent (quiet 240 min, limit 60 min); shop_tallowick error spike (quiet 2 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M02,"Busy integration, last event 2 min ago",no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M03,Busy integration silent for 4 hours,shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M04,"Low-traffic shop (every 2 h), quiet 3 h = normal for it",no alert,no alert,True,"shop_mossbank ok (quiet 180 min, limit 360 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M05,"Low-traffic shop (every 2 h), quiet 7 h",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 420 min, limit 360 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M06,"5-min rhythm, quiet 59 min (limit 60)",no alert,no alert,True,"shop_mossbank ok (quiet 59 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M07,"5-min rhythm, quiet 61 min (limit 60)",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 61 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M08,Error rate exactly 10% (2 of 20) is not above the limit,no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M09,Error rate 15% (3 of 20),shop_mossbank:error_spike,shop_mossbank:error_spike,True,"shop_mossbank error spike (quiet 2 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M10,2 of 3 rejected: too few requests to judge,no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M11,10 duplicates and 10 accepted: duplicates are not errors,no alert,no alert,True,"shop_mossbank ok (quiet 2 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M12,"New integration with only 4 events: still learning, no alert",no alert,no alert,True,"shop_mossbank learning (4 events, need 20 to learn the rhythm)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M13,Integration that never sent anything in 7 days,shop_mossbank:silence,shop_mossbank:silence,True,shop_mossbank silent (no events in 7 days),0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M14,"Silent, but the same alert is pending review since 2 h",no alert | skipped shop_mossbank:silence,no alert | skipped shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M15,"Silent, earlier alert is 7 h old",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M16,"Silent, earlier alert was rejected by the CSM",shop_mossbank:silence,shop_mossbank:silence,True,"shop_mossbank silent (quiet 240 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M17,Validation errors 50% (10 of 20),shop_mossbank:error_spike,shop_mossbank:error_spike,True,"shop_mossbank error spike (quiet 2 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,detector,M18,Silent and error spike at the same time,"shop_mossbank:error_spike, shop_mossbank:silence","shop_mossbank:error_spike, shop_mossbank:silence",True,"shop_mossbank silent + error spike (quiet 240 min, limit 60 min)",0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C01,Good silence draft passes,pass,pass,True,,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C02,Good error-spike draft passes,pass,pass,True,,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C03,Wrong rate (25% instead of 23.1%),blocked,blocked,True,numbers not in the facts: 25; main number missing,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C04,Invented number (300 orders),blocked,blocked,True,numbers not in the facts: 300,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C05,Contains the real signing secret,"blocked, draft removed, nothing quoted","blocked, draft removed, nothing quoted",True,contains a real signing secret; contains something that looks like a key or signature; numbers not in the facts (not listed because the text contains a secret or key),0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C06,Contains a key-like hex string,"blocked, draft removed, nothing quoted","blocked, draft removed, nothing quoted",True,contains something that looks like a key or signature; numbers not in the facts (not listed because the text contains a secret or key),0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C07,Mentions another client,blocked,blocked,True,mentions another client: Quillmoor Books,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C08,No number from the facts at all,blocked,blocked,True,main number missing,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C09,AI call failed: no draft,blocked,blocked,True,AI call failed after retries,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C10,Contains a request signature (v1=...),"blocked, draft removed, nothing quoted","blocked, draft removed, nothing quoted",True,contains something that looks like a key or signature; numbers not in the facts (not listed because the text contains a secret or key),0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C11,Promises a fix right away,blocked,blocked,True,promises a fix or a deadline,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C12,Asks for a call,blocked,blocked,True,asks for a call or meeting,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C13,Offers free work,blocked,blocked,True,offers free work or money,0,0
+MMW9N73VR,2026-11-09T19:16:43.239Z,draft_check,C14,"""Feel free to reply"" is not an offer of free work",pass,pass,True,,0,0

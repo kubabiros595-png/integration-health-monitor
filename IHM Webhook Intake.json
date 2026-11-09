@@ -32,7 +32,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Step 1: is this request really from the shop, and is it fresh?\n// Signature = HMAC-SHA256(shop secret, \"<timestamp>.<raw body>\"), sent as \"v1=<hex>\".\n// Secrets live only in n8n Variables, never in this code.\nconst crypto = require('crypto');\nconst MAX_AGE_SECONDS = 300; // 5 minutes, both into the past and the future\nconst SECRET_VARIABLE = {\n  shop_mossbank: 'IHM_SECRET_MOSSBANK',\n  shop_quillmoor: 'IHM_SECRET_QUILLMOOR',\n  shop_tallowick: 'IHM_SECRET_TALLOWICK'\n};\n\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst shop = String(headers['x-ihm-shop'] || '');\nconst tsHeader = headers['x-ihm-timestamp'];\nconst sigHeader = String(headers['x-ihm-signature'] || '');\nconst testRun = String(headers['x-ihm-test-run'] || '');\n\nlet raw = null;\nif (item.binary && item.binary.data) {\n  const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\n  raw = buf.toString('utf8');\n}\n\nconst base = {\n  received_at: new Date().toISOString(),\n  shop_id: shop,\n  event_id: '',\n  test_run: testRun,\n  source: testRun ? 'test' : 'live',\n  raw_body: raw\n};\nconst result = (ok, outcome, reason, status) => [{ json: { ...base, ok, outcome, reason, http_status: status } }];\n\nconst variableName = SECRET_VARIABLE[shop];\nif (!variableName) return result(false, 'rejected_signature', 'unknown shop', 401);\nconst secret = $vars[variableName];\nif (!secret) return result(false, 'rejected_config', 'signing secret not configured', 500);\nif (raw === null) return result(false, 'rejected_validation', 'raw body not available', 400);\n\nconst match = /^v1=([0-9a-f]{64})$/.exec(sigHeader);\nif (!match) return result(false, 'rejected_signature', sigHeader ? 'malformed signature header' : 'missing signature header', 401);\n\nif (tsHeader === undefined || tsHeader === '') return result(false, 'rejected_timestamp', 'missing timestamp header', 401);\nif (!/^[0-9]{9,11}$/.test(String(tsHeader))) return result(false, 'rejected_timestamp', 'timestamp is not unix seconds', 401);\nconst ts = Number(tsHeader);\n\nconst expected = crypto.createHmac('sha256', secret).update(tsHeader + '.' + raw, 'utf8').digest('hex');\nconst same = crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(match[1], 'hex'));\nif (!same) return result(false, 'rejected_signature', 'signature does not match', 401);\n\nconst age = Math.floor(Date.now() / 1000) - ts;\nif (age > MAX_AGE_SECONDS) return result(false, 'rejected_timestamp', 'timestamp too old (' + age + ' s)', 401);\nif (age < -MAX_AGE_SECONDS) return result(false, 'rejected_timestamp', 'timestamp in the future (' + (-age) + ' s)', 401);\n\nreturn result(true, 'signature_ok', '', 200);"
+        "jsCode": "// Step 1: is this request really from the shop, is it fresh, and is it a sane size?\n// Signature = HMAC-SHA256(shop secret, \"<timestamp>.<raw body>\"), sent as \"v1=<hex>\".\n// Secrets live only in n8n Variables, never in this code.\nconst crypto = require('crypto');\nconst MAX_AGE_SECONDS = 300;       // 5 minutes, both into the past and the future\nconst MAX_BODY_BYTES = 64 * 1024;  // real events are a few hundred bytes; anything huge is refused before any work\nconst SECRET_VARIABLE = {\n  shop_mossbank: 'IHM_SECRET_MOSSBANK',\n  shop_quillmoor: 'IHM_SECRET_QUILLMOOR',\n  shop_tallowick: 'IHM_SECRET_TALLOWICK'\n};\n\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst shop = String(headers['x-ihm-shop'] || '');\nconst tsHeader = headers['x-ihm-timestamp'];\nconst sigHeader = String(headers['x-ihm-signature'] || '');\nconst testRun = String(headers['x-ihm-test-run'] || '');\n\nlet raw = null;\nif (item.binary && item.binary.data) {\n  const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\n  raw = buf.toString('utf8');\n}\n\nconst base = {\n  received_at: new Date().toISOString(),\n  shop_id: shop,\n  event_id: '',\n  test_run: testRun,\n  source: testRun ? 'test' : 'live',\n  raw_body: raw\n};\nconst result = (ok, outcome, reason, status) => [{ json: { ...base, raw_body: status === 413 ? '' : raw, ok, outcome, reason, http_status: status } }];\n\nif (raw !== null && Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return result(false, 'rejected_too_large', 'body larger than 64 KB', 413);\n\nconst variableName = SECRET_VARIABLE[shop];\nif (!variableName) return result(false, 'rejected_signature', 'unknown shop', 401);\nconst secret = $vars[variableName];\nif (!secret) return result(false, 'rejected_config', 'signing secret not configured', 500);\nif (raw === null) return result(false, 'rejected_validation', 'raw body not available', 400);\n\nconst match = /^v1=([0-9a-f]{64})$/.exec(sigHeader);\nif (!match) return result(false, 'rejected_signature', sigHeader ? 'malformed signature header' : 'missing signature header', 401);\n\nif (tsHeader === undefined || tsHeader === '') return result(false, 'rejected_timestamp', 'missing timestamp header', 401);\nif (!/^[0-9]{9,11}$/.test(String(tsHeader))) return result(false, 'rejected_timestamp', 'timestamp is not unix seconds', 401);\nconst ts = Number(tsHeader);\n\nconst expected = crypto.createHmac('sha256', secret).update(tsHeader + '.' + raw, 'utf8').digest('hex');\nconst same = crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(match[1], 'hex'));\nif (!same) return result(false, 'rejected_signature', 'signature does not match', 401);\n\nconst age = Math.floor(Date.now() / 1000) - ts;\nif (age > MAX_AGE_SECONDS) return result(false, 'rejected_timestamp', 'timestamp too old (' + age + ' s)', 401);\nif (age < -MAX_AGE_SECONDS) return result(false, 'rejected_timestamp', 'timestamp in the future (' + (-age) + ' s)', 401);\n\nreturn result(true, 'signature_ok', '', 200);"
       }
     },
     {
@@ -206,7 +206,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $json.http_status === 200 ? { status: $json.outcome, event_id: $json.event_id } : ($json.http_status === 401 ? { error: \"unauthorized\" } : ($json.http_status === 400 ? { error: \"invalid payload\", details: $json.reason } : { error: \"server error\" })) }}",
+        "responseBody": "={{ $json.http_status === 200 ? { status: $json.outcome, event_id: $json.event_id } : ($json.http_status === 401 ? { error: \"unauthorized\" } : ($json.http_status === 400 ? { error: \"invalid payload\", details: $json.reason } : ($json.http_status === 413 ? { error: \"payload too large\" } : { error: \"server error\" }))) }}",
         "options": {
           "responseCode": "={{ $json.http_status }}"
         }
@@ -331,7 +331,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Step 4: the event is stored, so it is now safe to answer 200.\nconst v = $('New or duplicate?').first().json;\nreturn [{ json: { ...v, outcome: 'accepted', reason: '', http_status: 200 } }];"
+        "jsCode": "// Step 4: this is the only stored copy, so it is now safe to answer 200.\nconst v = $('Keep first copy only').first().json;\nreturn [{ json: { ...v, outcome: 'accepted', reason: '', http_status: 200 } }];"
       }
     },
     {
@@ -440,6 +440,134 @@
           ]
         }
       }
+    },
+    {
+      "name": "Recheck after save",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2080,
+        32
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "JhY5TUrGrTqxMh4I",
+          "cachedResultName": "IHM Events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "shop_id",
+              "condition": "eq",
+              "keyValue": "={{ $('New or duplicate?').first().json.shop_id }}"
+            },
+            {
+              "keyName": "event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('New or duplicate?').first().json.event_id }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "alwaysOutputData": true,
+      "id": "bbc19c4f-8a93-4b50-85d8-14ca96074d26"
+    },
+    {
+      "name": "Keep first copy only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2300,
+        32
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Step 3b: race-safe idempotency.\n// Two identical requests arriving at the same moment can both pass the lookup above.\n// After saving, both copies are visible: the row with the lowest id wins,\n// and any later copy deletes itself and is answered as a duplicate.\nconst v = $('New or duplicate?').first().json;\nconst myId = $('Save event').first().json.id;\nconst ids = $input.all().map(i => i.json.id).filter(x => x !== undefined).sort((a, b) => a - b);\nconst winner = ids.length === 0 || ids[0] === myId;\nreturn [{ json: { ...v, my_row_id: myId, copies_found: ids.length, winner } }];"
+      },
+      "id": "dd7b4a78-a315-4349-a4e4-10c8ba07145e"
+    },
+    {
+      "name": "First copy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2520,
+        32
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.winner }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "d51fd623-d41f-48b7-81d2-653db67a5ff7"
+    },
+    {
+      "name": "Delete my copy",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2740,
+        -96
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "JhY5TUrGrTqxMh4I",
+          "cachedResultName": "IHM Events"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.my_row_id }}"
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true,
+      "id": "591a8246-943a-4cb1-b15e-a77c6fbd0d1d"
+    },
+    {
+      "name": "Mark parallel duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        -96
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// A copy of this event was saved a moment earlier by a parallel request, so this copy was removed.\nconst v = $('Keep first copy only').first().json;\nreturn [{ json: { ...v, outcome: 'duplicate', reason: 'event_id already processed (parallel request), ignored', http_status: 200 } }];"
+      },
+      "id": "f341ce91-7b1e-4984-9d16-2aef4804d0aa"
     }
   ],
   "connections": {
@@ -567,7 +695,7 @@
       "main": [
         [
           {
-            "node": "Mark accepted",
+            "node": "Recheck after save",
             "type": "main",
             "index": 0
           }
@@ -575,6 +703,68 @@
       ]
     },
     "Mark accepted": {
+      "main": [
+        [
+          {
+            "node": "Respond to sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recheck after save": {
+      "main": [
+        [
+          {
+            "node": "Keep first copy only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep first copy only": {
+      "main": [
+        [
+          {
+            "node": "First copy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First copy?": {
+      "main": [
+        [
+          {
+            "node": "Mark accepted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete my copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete my copy": {
+      "main": [
+        [
+          {
+            "node": "Mark parallel duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark parallel duplicate": {
       "main": [
         [
           {
@@ -620,15 +810,6 @@
         "Already seen?"
       ],
       "description": "Same shop + event_id is processed once. Repeats get 200 and are only logged."
-    },
-    {
-      "id": "cf9e346e-ba11-47a7-ab4c-148a394de58a",
-      "name": "Store",
-      "nodeNames": [
-        "Save event",
-        "Mark accepted"
-      ],
-      "description": "Saves the event before answering, so 200 always means stored."
     },
     {
       "id": "7cd756fb-9f6b-4be1-9741-ff0151efdf32",
